@@ -1,4 +1,4 @@
-# Dragoman (service.subtitles.dragoman) v0.2.1 - test build
+# Dragoman (service.subtitles.dragoman) v0.2.2 - test build
 
 Your subtitle interpreter: translates subtitles into your language with Google
 Gemini while the video keeps playing. Works on any Kodi 19+ device, for streams

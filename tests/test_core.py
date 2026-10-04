@@ -30,6 +30,13 @@ SR = (u"Gde si bio sinoć? Bio sam kod kuće. Šta ti je? Znaš na šta mislim. 
 BS = (u"Gdje si bio sinoć? Bio sam kod kuće. Šta ti je? Znaš na šta mislim. Ne želim opet ići tamo, "
       u"u redu? To jednostavno nije u redu. Možemo razgovarati sutra. Da, znam. Hajde, idemo. Ovdje "
       u"nema ništa za nas. Šta hoćeš od mene? Ko je to bio? Tačno tako, uvijek isto. Lijepo vrijeme.") * 6
+# TV-style English with words that are also Croatian/Serbian ("sad", "ja", "ko", "ceo", "pre", "i", "a")
+EN_TV = (u"Agent Lisbon, we have a body. I'm sad to say we found him in the lake. Who found him? "
+         u"A jogger. Cho, talk to the jogger. Rigsby, check the car. Jane, where are you going? "
+         u"He was the CEO of a tech company. Pre-tax profits were huge. Ja, ja, very funny. "
+         u"He was knocked out, K.O., before he went in the water. I know it was murder. "
+         u"Where were you last night? At home. Alone? Yes. I mean, no. My sister was with me. "
+         u"I loved him. I know you did. That's why you're so angry with him. ") * 8
 SR_CYR = (u"Где си био синоћ? Био сам код куће. Шта ти је? Знаш на шта мислим. Ђорђе, хоћеш ли кафу? "
           u"Ћао, видимо се сутра. Љубав је лепа ствар. Њега нема овде.") * 6
 
@@ -102,6 +109,18 @@ class LangTests(unittest.TestCase):
         self.assertIn('name said en', how)
         self.assertEqual(c('TempSubtitle.hr.srt', SR)[0], 'hr')  # same cluster: trust the name
         self.assertEqual(c('movie.srt', EN)[0], 'en')
+
+    def test_english_with_croatian_looking_words_stays_english(self):
+        # The user's TV: English a4k downloads (".eng") were taken for Croatian/Serbian and left alone.
+        self.assertEqual(langdetect.detect_text(EN_TV)[0], 'en')
+        self.assertEqual(langdetect.classify('The.Mentalist.S03E03.WEBRip.x264-ION10.eng', EN_TV),
+                         ('en', 'file name'))
+        self.assertEqual(langdetect.classify('TempSubtitle.en.srt', EN_TV)[0], 'en')
+        # a subtitle really in another language than its name still gets caught
+        code, how = langdetect.classify('The.Mentalist.S03E03.eng', HR)
+        self.assertEqual(code, 'hr')
+        self.assertIn('name said en', how)
+        self.assertEqual(langdetect.classify('Film.de.srt', SL)[0], 'sl')
 
     def test_languages(self):
         self.assertEqual(languages.normalize('Slovenian'), 'sl')

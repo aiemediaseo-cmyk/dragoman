@@ -217,6 +217,7 @@ class StreamTests(Base):
         self.assertTrue(data.startswith(b'\xef\xbb\xbf'))
         self.assertIn(b'00:00:01,000 --> 00:00:01,900\n[sl] ', data)
         toasts = self.toasts()
+        self.assertIn('Translating 30 lines into Slovenian - ready in about 1 min. Keep watching.', toasts)
         self.assertIn('Slovenian subtitles loaded', toasts)
         self.assertIn('Slovenian subtitles loaded (saved translation)', toasts)
         self.assertTrue(any(p[0] == 'create' for p in STATE.progress_bg))
@@ -266,6 +267,23 @@ class StreamTests(Base):
                           14: lambda: setattr(STATE, 'abort', True)})
         self.assertEqual(len(STATE.loaded_subs), 1)
         self.assertNotIn('same subtitle', self.log())
+
+    def test_stopping_playback_mid_translation_says_the_work_is_kept(self):
+        def stop():
+            STATE.playing = False
+            self.player().onPlayBackStopped()
+
+        self.fake.delay = 4.0
+        self.run_service({2: self.start_play, 4: self.open_dialog,
+                          6: lambda: self.pick('TempSubtitle.en.srt', EN),
+                          7: lambda: time.sleep(1.5),      # the job is waiting for Gemini now
+                          8: stop,
+                          9: self.join_job,
+                          12: lambda: setattr(STATE, 'abort', True)})
+        self.assertIn('job cancelled (playback): TempSubtitle.en.srt', self.log())
+        self.assertIn('Translation stopped with playback - the finished part is saved and is used '
+                      'when you pick this subtitle again', self.toasts())
+        self.assertEqual(STATE.loaded_subs, [])
 
     def test_new_pick_cancels_running_job(self):
         self.fake.delay = 5.0

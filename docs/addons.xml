@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addons>
-<addon id="service.subtitles.dragoman" name="Dragoman" version="0.2.1" provider-name="AIE Media">
+<addon id="service.subtitles.dragoman" name="Dragoman" version="0.2.2" provider-name="AIE Media">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
     </requires>
@@ -25,12 +25,10 @@ A dragoman was the interpreter who stood between travellers and the language aro
             <icon>resources/icon.png</icon>
             <fanart>resources/fanart.jpg</fanart>
         </assets>
-        <news>v0.2.1 - Dragoman now lives on GitHub and installs and updates through the Dragoman Repository (repository.dragoman).
+        <news>v0.2.2 - English subtitles are no longer taken for Croatian or Serbian (a stray word like "sad" or "ja" could tip the language check); the language in the file name now wins unless the text clearly says otherwise. A notice says how long a translation will take, and stopping playback mid-translation tells you the finished part is kept.
+v0.2.1 - Dragoman now lives on GitHub and installs and updates through the Dragoman Repository (repository.dragoman).
 v0.2.0 - new name: Dragoman (was AI Subtitle Translator; your key and settings are copied over, and it offers to switch the old add-on off). New icon. The API key is shown in full while you type it and before it is saved. New: import the key from a web address (Pastebin, paste.kodi.tv, GitHub gist, Dropbox, Google Drive).
-v0.1.3 - the translated subtitle is written where Kodi can always open it (plain file name, Kodi's temp folder); the add-on checks that Kodi really switched to it and tries a second place if not.
-v0.1.2 - finds subtitles saved without a .srt ending (a4kSubtitles "….eng" files, Kodi's TempSubtitle.en.eng); WebVTT subtitles are translated too; version shown in the menu title.
-v0.1.1 - API key and languages to leave alone no longer get lost when the settings dialog closes; subtitles from a4kSubtitles are picked up reliably; detailed log shows what the watched folders contain.
-v0.1.0 - first test build.</news>
+v0.1.3 - the translated subtitle is written where Kodi can always open it (plain file name, Kodi's temp folder); the add-on checks that Kodi really switched to it and tries a second place if not.</news>
     </extension>
 </addon>
 <addon id="repository.dragoman" name="Dragoman Repository" version="1.0.0" provider-name="AIE Media">

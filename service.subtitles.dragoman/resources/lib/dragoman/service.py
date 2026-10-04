@@ -325,7 +325,7 @@ class TranslatorService(object):
         self.session = None
         job = self.job
         if job is not None and job.is_alive() and s is not None and job.cand.session_id == s.id:
-            job.cancel()
+            job.cancel('playback')
         self.log.info('playback ended (%s)' % reason)
 
     def is_current(self, session_id):

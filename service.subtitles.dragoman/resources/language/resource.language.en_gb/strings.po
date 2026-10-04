@@ -532,6 +532,14 @@ msgctxt "#32322"
 msgid "Kodi could not open the translated subtitle - details are in the log"
 msgstr ""
 
+msgctxt "#32323"
+msgid "Translating {n} lines into {lang} - ready in about {min} min. Keep watching."
+msgstr ""
+
+msgctxt "#32324"
+msgid "Translation stopped with playback - the finished part is saved and is used when you pick this subtitle again"
+msgstr ""
+
 # Language names
 
 msgctxt "#32501"

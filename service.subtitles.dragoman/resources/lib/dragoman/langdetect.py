@@ -120,11 +120,16 @@ def _other_scripts(letters):
     return ''
 
 
+def _words(text, max_words):
+    sample = _TAG_RE.sub(' ', text[:300000])
+    return sample, _WORD_RE.findall(sample.lower())[:max_words]
+
+
 def detect_text(text, max_words=5000):
     """(code, confidence 0..1) from subtitle text, or ('', 0.0)."""
     if not text:
         return '', 0.0
-    sample = _TAG_RE.sub(' ', text[:300000])
+    sample, words = _words(text, max_words)
     letters = [c for c in sample if c.isalpha()]
     if len(letters) < 40:
         return '', 0.0
@@ -133,7 +138,6 @@ def detect_text(text, max_words=5000):
     other = _other_scripts(letters)
     if other:
         return other, 0.9
-    words = _WORD_RE.findall(sample.lower())[:max_words]
     if len(words) < 20:
         return '', 0.0
     scores = []
@@ -145,7 +149,10 @@ def detect_text(text, max_words=5000):
     conf = best_hits / float(len(words))
     if best_hits < 8 or conf < 0.05:
         return '', conf
-    if best in ('sl', 'shs') or scores[1][1] in ('sl', 'shs'):
+    if best in ('sl', 'shs'):
+        # Slovenian vs Croatian/Serbian/Bosnian: decided by words only one side uses.
+        # Only when one of the two is the best match - a stray "sad" or "ja" in an
+        # English subtitle must not turn English into Croatian (seen on the user's TV).
         sl = sum(1 for w in words if w in SL_ONLY)
         shs = sum(1 for w in words if w in SHS_ONLY)
         if sl or shs:
@@ -155,6 +162,18 @@ def detect_text(text, max_words=5000):
     if best == 'shs':
         best = _shs_variant(words)
     return best, conf
+
+
+def share(text, code, max_words=5000):
+    """Fraction of the text's words that are common words of `code` (None if unknown)."""
+    key = 'shs' if code in languages.SHS else code
+    stop = STOPWORDS.get(key)
+    if stop is None or not text:
+        return None
+    _sample, words = _words(text, max_words)
+    if not words:
+        return None
+    return sum(1 for w in words if w in stop) / float(len(words))
 
 
 def _shs_variant(words):
@@ -194,7 +213,12 @@ def classify(name, text):
         fcode = 'sr-Cyrl'
     tcode, conf = detect_text(text)
     if fcode and tcode and conf >= 0.15 and _cluster(tcode) != _cluster(fcode):
-        return tcode, 'text (%.0f%% common words; name said %s)' % (conf * 100, fcode)
+        named = share(text, fcode)
+        # The name wins unless the text clearly does not fit it: a subtitle really in
+        # the named language still scores well for that language's common words.
+        if named is None or named < 0.5 * conf:
+            return tcode, 'text (%.0f%% common words; name said %s, %s)' % (
+                conf * 100, fcode, '?' if named is None else '%.0f%%' % (named * 100))
     if fcode:
         return fcode, 'file name'
     if tcode:

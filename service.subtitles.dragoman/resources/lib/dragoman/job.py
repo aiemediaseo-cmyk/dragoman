@@ -25,6 +25,13 @@ def output_temp_dir():
     return kodi.translate_path(TEMP_OUT)
 
 
+def estimate_minutes(lines, chunk_size, rpm, seconds_per_request=9.0):
+    """Rough time for a translation: one request per chunk, at most `rpm` a minute."""
+    requests = max(1, -(-max(0, lines) // max(1, chunk_size)))
+    seconds = requests * max(seconds_per_request, 60.0 / max(1, rpm))
+    return max(1, int(seconds / 60.0 + 0.5))
+
+
 def safe_name(text, limit=60):
     """ASCII-only file name part: no '+', no accents, no path characters."""
     text = unicodedata.normalize('NFKD', text or '')
@@ -61,6 +68,7 @@ class TranslationJob(threading.Thread):
         self.forced = forced
         self.md5 = md5
         self.cancel_event = threading.Event()
+        self.cancel_reason = ''
         self.log = get_log()
         self.progress = None
         self.result_path = None
@@ -68,7 +76,8 @@ class TranslationJob(threading.Thread):
         self.engine = None
 
     # ------------------------------------------------------------------ control
-    def cancel(self):
+    def cancel(self, reason=''):
+        self.cancel_reason = self.cancel_reason or reason
         self.cancel_event.set()
         engine = self.engine
         if engine is not None:
@@ -90,7 +99,10 @@ class TranslationJob(threading.Thread):
             self._run()
         except translator.Cancelled:
             self.outcome = 'cancelled'
-            self.log.info('job cancelled: %s' % self.cand.name)
+            self.log.info('job cancelled (%s): %s' % (self.cancel_reason or 'new subtitle', self.cand.name))
+            if self.cancel_reason == 'playback' and self.engine is not None:
+                # finished chunks are in the cache: picking this subtitle again continues from there
+                kodi.notify(kodi.text(32324), 6000)
         except translator.StopJob as exc:
             self.outcome = 'stopped:' + exc.kind
             self.log.warn('translation stopped (%s): %s' % (exc.kind, exc.message))
@@ -207,6 +219,9 @@ class TranslationJob(threading.Thread):
         self.log.info('translating %d cues %s -> %s with %s (chunk %d, %d/min)' % (
             len(texts), lang or '?', target, cfg.models[0], cfg.chunk_size, cfg.rpm))
         self._progress_open(target, len(texts))
+        remaining = len(texts) - sum(len(v) for v in chunks.values())
+        kodi.notify(kodi.text(32323, n=remaining, lang=language_label(target),
+                              min=estimate_minutes(remaining, cfg.chunk_size, cfg.rpm)), 6000)
 
         def make_client(model):
             return gemini.GeminiClient(cfg.api_key, model, user_agent='Kodi-Dragoman/%s' % kodi.addon_version(),
