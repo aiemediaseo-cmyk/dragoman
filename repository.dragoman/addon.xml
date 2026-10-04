@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<addon id="repository.dragoman" name="Dragoman Repository" version="1.0.0" provider-name="AIE Media">
+    <extension point="xbmc.addon.repository" name="Dragoman Repository">
+        <dir>
+            <info compressed="false">https://raw.githubusercontent.com/aiemediaseo-cmyk/dragoman/main/docs/addons.xml</info>
+            <checksum verify="sha256">https://raw.githubusercontent.com/aiemediaseo-cmyk/dragoman/main/docs/addons.xml.sha256</checksum>
+            <datadir zip="true">https://raw.githubusercontent.com/aiemediaseo-cmyk/dragoman/main/docs/</datadir>
+            <hashes>sha256</hashes>
+        </dir>
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <summary lang="en_GB">Installs Dragoman and keeps it up to date</summary>
+        <description lang="en_GB">The home of Dragoman, the subtitle interpreter: it translates subtitles into your language with Google Gemini while the video keeps playing. Install Dragoman from this repository and Kodi updates it automatically.</description>
+        <platform>all</platform>
+        <license>GPL-2.0-or-later</license>
+        <source>https://github.com/aiemediaseo-cmyk/dragoman</source>
+        <assets>
+            <icon>icon.png</icon>
+            <fanart>fanart.jpg</fanart>
+        </assets>
+    </extension>
+</addon>

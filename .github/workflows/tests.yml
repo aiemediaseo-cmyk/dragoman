@@ -1,0 +1,25 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['3.10', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Tests (with stand-in Kodi modules)
+        run: cd tests && python -m unittest -v test_core test_service
+      - name: Still runs on Kodi 19's Python (3.6+)
+        run: |
+          pip install vermin
+          vermin -t=3.6- --no-tips --violations service.subtitles.dragoman
+      - name: Kodi repository in docs/ is up to date
+        run: python scripts/build_repo.py --check

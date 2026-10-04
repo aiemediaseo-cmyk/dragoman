@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<addons>
+<addon id="service.subtitles.dragoman" name="Dragoman" version="0.2.1" provider-name="AIE Media">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0"/>
+    </requires>
+    <extension point="xbmc.service" library="service.py" start="login"/>
+    <extension point="xbmc.python.script" library="default.py">
+        <provides>executable</provides>
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <summary lang="en_GB">Your subtitle interpreter: translates subtitles into your language while the video keeps playing</summary>
+        <description lang="en_GB">When a subtitle is loaded during playback (picked in the subtitle dialog, downloaded automatically by a subtitle add-on, or found next to the video), Dragoman translates it into your language with Google Gemini and switches to the translation when it is ready. Playback never pauses. Subtitles already in your language, or in languages you choose to leave alone, are not translated. Works for streams and local files on any Kodi 19+ device.
+
+You need your own free Gemini API key (aistudio.google.com/apikey). Type it in, or import it from a web address such as an unlisted Pastebin paste. Only the subtitle text, the title and the plot are sent; timings stay on your device.
+
+Privacy: subtitle text and titles are sent to Google. On Gemini's free tier, Google may use this content to improve its products.
+
+A dragoman was the interpreter who stood between travellers and the language around them.</description>
+        <disclaimer lang="en_GB">Subtitle text and titles are sent to Google for translation. On the free tier Google may use them to improve its products. Machine translation can contain mistakes.</disclaimer>
+        <platform>all</platform>
+        <license>GPL-2.0-or-later</license>
+        <source>https://github.com/aiemediaseo-cmyk/dragoman</source>
+        <assets>
+            <icon>resources/icon.png</icon>
+            <fanart>resources/fanart.jpg</fanart>
+        </assets>
+        <news>v0.2.1 - Dragoman now lives on GitHub and installs and updates through the Dragoman Repository (repository.dragoman).
+v0.2.0 - new name: Dragoman (was AI Subtitle Translator; your key and settings are copied over, and it offers to switch the old add-on off). New icon. The API key is shown in full while you type it and before it is saved. New: import the key from a web address (Pastebin, paste.kodi.tv, GitHub gist, Dropbox, Google Drive).
+v0.1.3 - the translated subtitle is written where Kodi can always open it (plain file name, Kodi's temp folder); the add-on checks that Kodi really switched to it and tries a second place if not.
+v0.1.2 - finds subtitles saved without a .srt ending (a4kSubtitles "….eng" files, Kodi's TempSubtitle.en.eng); WebVTT subtitles are translated too; version shown in the menu title.
+v0.1.1 - API key and languages to leave alone no longer get lost when the settings dialog closes; subtitles from a4kSubtitles are picked up reliably; detailed log shows what the watched folders contain.
+v0.1.0 - first test build.</news>
+    </extension>
+</addon>
+<addon id="repository.dragoman" name="Dragoman Repository" version="1.0.0" provider-name="AIE Media">
+    <extension point="xbmc.addon.repository" name="Dragoman Repository">
+        <dir>
+            <info compressed="false">https://raw.githubusercontent.com/aiemediaseo-cmyk/dragoman/main/docs/addons.xml</info>
+            <checksum verify="sha256">https://raw.githubusercontent.com/aiemediaseo-cmyk/dragoman/main/docs/addons.xml.sha256</checksum>
+            <datadir zip="true">https://raw.githubusercontent.com/aiemediaseo-cmyk/dragoman/main/docs/</datadir>
+            <hashes>sha256</hashes>
+        </dir>
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <summary lang="en_GB">Installs Dragoman and keeps it up to date</summary>
+        <description lang="en_GB">The home of Dragoman, the subtitle interpreter: it translates subtitles into your language with Google Gemini while the video keeps playing. Install Dragoman from this repository and Kodi updates it automatically.</description>
+        <platform>all</platform>
+        <license>GPL-2.0-or-later</license>
+        <source>https://github.com/aiemediaseo-cmyk/dragoman</source>
+        <assets>
+            <icon>icon.png</icon>
+            <fanart>fanart.jpg</fanart>
+        </assets>
+    </extension>
+</addon>
+</addons>

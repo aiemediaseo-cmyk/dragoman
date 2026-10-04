@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+/art/node_modules/
+/art/package*.json
+*.tmp

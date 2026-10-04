@@ -1,0 +1,70 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+@font-face { font-family: 'Playfair'; font-weight: 800;
+  src: url('node_modules/@fontsource/playfair-display/files/playfair-display-latin-800-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Playfair'; font-weight: 800; unicode-range: U+0400-04FF;
+  src: url('node_modules/@fontsource/playfair-display/files/playfair-display-cyrillic-800-normal.woff2') format('woff2'); }
+html, body { margin: 0; padding: 0; background: transparent; }
+svg { display: block; }
+text { font-family: 'Playfair', serif; font-weight: 800; }
+</style>
+</head>
+<body>
+<svg id="icon" xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#232a66"/>
+      <stop offset="0.55" stop-color="#141a45"/>
+      <stop offset="1" stop-color="#0a0d26"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.28" cy="0.22" r="0.75">
+      <stop offset="0" stop-color="#4b5fd1" stop-opacity="0.55"/>
+      <stop offset="0.6" stop-color="#4b5fd1" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#4b5fd1" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="warm" cx="0.82" cy="0.92" r="0.6">
+      <stop offset="0" stop-color="#f08a24" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#f08a24" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ivory" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fbf5e9"/>
+      <stop offset="1" stop-color="#e9dcc3"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffd36b"/>
+      <stop offset="0.55" stop-color="#f7a93a"/>
+      <stop offset="1" stop-color="#e8791f"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#04061a" flood-opacity="0.55"/>
+    </filter>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="6" stdDeviation="9" flood-color="#04061a" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <rect width="512" height="512" fill="url(#glow)"/>
+  <rect width="512" height="512" fill="url(#warm)"/>
+
+  <!-- back bubble: Latin -->
+  <g filter="url(#soft)">
+    <path fill="url(#ivory)" d="
+      M 112 70 H 268 A 52 52 0 0 1 320 122 V 230 A 52 52 0 0 1 268 282
+      H 150 L 96 330 L 104 280 A 52 52 0 0 1 60 230 V 122 A 52 52 0 0 1 112 70 Z"/>
+    <text x="168" y="221" font-size="158" text-anchor="middle" fill="#1a2058">A</text>
+  </g>
+
+  <!-- front bubble: Cyrillic -->
+  <g filter="url(#shadow)">
+    <path fill="url(#gold)" d="
+      M 244 196 H 400 A 52 52 0 0 1 452 248 V 356 A 52 52 0 0 1 408 406
+      L 416 456 L 362 408 H 244 A 52 52 0 0 1 192 356 V 248 A 52 52 0 0 1 244 196 Z"/>
+    <text x="322" y="362" font-size="160" text-anchor="middle" fill="#1a2058">Ж</text>
+  </g>
+</svg>
+</body>
+</html>

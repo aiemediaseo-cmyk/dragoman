@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<settings>
+    <category label="32100">
+        <setting id="target_language" type="enum" label="32101" lvalues="32110|32501|32502|32503|32504|32505|32506|32507|32508|32509|32510|32511|32512|32513|32514|32515|32516|32517|32518|32519|32520|32521|32522|32523|32524|32525|32526|32527|32528|32529|32530|32531|32532|32533|32534|32535|32536|32537|32538|32539|32540|32541|32542|32543|32544" default="0"/>
+        <setting type="action" label="32102" action="RunScript(service.subtitles.dragoman,leavealone)" option="close"/>
+        <setting type="lsep" label="32104"/>
+        <setting id="src_manual" type="bool" label="32105" default="true"/>
+        <setting id="src_auto" type="bool" label="32106" default="true"/>
+        <setting id="src_local" type="bool" label="32107" default="true"/>
+        <setting id="mode" type="enum" label="32108" lvalues="32111|32112|32113" default="0"/>
+    </category>
+    <category label="32120">
+        <setting type="lsep" label="32121"/>
+        <setting type="action" label="32203" action="RunScript(service.subtitles.dragoman,enterkey)" option="close"/>
+        <setting type="action" label="32273" action="RunScript(service.subtitles.dragoman,importurl)" option="close"/>
+        <setting type="action" label="32123" action="RunScript(service.subtitles.dragoman,importkey)" option="close"/>
+        <setting type="action" label="32124" action="RunScript(service.subtitles.dragoman,testkey)" option="close"/>
+        <setting type="action" label="32236" action="RunScript(service.subtitles.dragoman,removekey)" option="close"/>
+        <setting type="lsep" label="32128"/>
+        <setting id="model" type="enum" label="32125" lvalues="32140|32141|32142|32143|32144|32145|32146" default="0"/>
+        <setting id="custom_model" type="text" label="32126" default="" enable="eq(-1,6)"/>
+        <setting id="fallback_models" type="bool" label="32127" default="true"/>
+    </category>
+    <category label="32150">
+        <setting id="chunk_size" type="slider" label="32151" default="100" range="20,10,200" option="int"/>
+        <setting id="rpm" type="slider" label="32152" default="8" range="1,1,30" option="int"/>
+        <setting id="cache_days" type="slider" label="32153" default="30" range="0,1,365" option="int"/>
+        <setting id="show_progress" type="bool" label="32154" default="true"/>
+        <setting id="notify_skips" type="bool" label="32155" default="true"/>
+        <setting id="debug_log" type="bool" label="32156" default="false"/>
+        <setting type="action" label="32157" action="RunScript(service.subtitles.dragoman,clearcache)" option="close"/>
+        <setting type="action" label="32158" action="RunScript(service.subtitles.dragoman,sendlog)" option="close"/>
+    </category>
+</settings>

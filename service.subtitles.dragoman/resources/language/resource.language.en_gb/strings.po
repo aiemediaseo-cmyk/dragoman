@@ -1,0 +1,711 @@
+# Kodi Media Center language file
+# Addon Name: Dragoman
+# Addon id: service.subtitles.dragoman
+# Addon Provider: AIE Media
+msgid ""
+msgstr ""
+"Project-Id-Version: service.subtitles.dragoman\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: \n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: English\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+# Settings
+
+msgctxt "#32100"
+msgid "General"
+msgstr ""
+
+msgctxt "#32101"
+msgid "Translate into"
+msgstr ""
+
+msgctxt "#32102"
+msgid "Languages to leave alone..."
+msgstr ""
+
+msgctxt "#32104"
+msgid "Translate subtitles that come from"
+msgstr ""
+
+msgctxt "#32105"
+msgid "The subtitle download dialog (picked by you)"
+msgstr ""
+
+msgctxt "#32106"
+msgid "Automatic downloads by subtitle add-ons"
+msgstr ""
+
+msgctxt "#32107"
+msgid "Files next to the video"
+msgstr ""
+
+msgctxt "#32108"
+msgid "When a subtitle needs translating"
+msgstr ""
+
+msgctxt "#32110"
+msgid "Auto (Kodi's subtitle language)"
+msgstr ""
+
+msgctxt "#32111"
+msgid "Translate automatically"
+msgstr ""
+
+msgctxt "#32112"
+msgid "Ask first"
+msgstr ""
+
+msgctxt "#32113"
+msgid "Do nothing"
+msgstr ""
+
+msgctxt "#32120"
+msgid "Gemini"
+msgstr ""
+
+msgctxt "#32121"
+msgid "Free API key: aistudio.google.com/apikey"
+msgstr ""
+
+msgctxt "#32123"
+msgid "Import API key from a file..."
+msgstr ""
+
+msgctxt "#32124"
+msgid "Test the API key"
+msgstr ""
+
+msgctxt "#32125"
+msgid "Model"
+msgstr ""
+
+msgctxt "#32126"
+msgid "Other model id"
+msgstr ""
+
+msgctxt "#32127"
+msgid "Use another free model when the daily quota runs out"
+msgstr ""
+
+msgctxt "#32128"
+msgid "Subtitle text and titles are sent to Google. On the free tier Google may use them to improve its products."
+msgstr ""
+
+msgctxt "#32140"
+msgid "gemini-3.5-flash-lite (fastest)"
+msgstr ""
+
+msgctxt "#32141"
+msgid "gemini-3.6-flash (better quality)"
+msgstr ""
+
+msgctxt "#32142"
+msgid "gemini-3.5-flash"
+msgstr ""
+
+msgctxt "#32143"
+msgid "gemini-3.1-flash-lite"
+msgstr ""
+
+msgctxt "#32144"
+msgid "gemini-3.7-flash"
+msgstr ""
+
+msgctxt "#32145"
+msgid "gemini-3.8-flash (slowest)"
+msgstr ""
+
+msgctxt "#32146"
+msgid "Other (type the model id)"
+msgstr ""
+
+msgctxt "#32150"
+msgid "Advanced"
+msgstr ""
+
+msgctxt "#32151"
+msgid "Lines per request"
+msgstr ""
+
+msgctxt "#32152"
+msgid "Requests per minute"
+msgstr ""
+
+msgctxt "#32153"
+msgid "Keep saved translations (days)"
+msgstr ""
+
+msgctxt "#32154"
+msgid "Show a progress bar while translating"
+msgstr ""
+
+msgctxt "#32155"
+msgid "Show a notice when a subtitle is left as it is"
+msgstr ""
+
+msgctxt "#32156"
+msgid "Detailed log"
+msgstr ""
+
+msgctxt "#32157"
+msgid "Clear saved translations"
+msgstr ""
+
+msgctxt "#32158"
+msgid "Send log..."
+msgstr ""
+
+# Menu
+
+msgctxt "#32200"
+msgid "service is running"
+msgstr ""
+
+msgctxt "#32201"
+msgid "service is NOT running (restart Kodi)"
+msgstr ""
+
+msgctxt "#32202"
+msgid "Translate the current subtitle now"
+msgstr ""
+
+msgctxt "#32203"
+msgid "Enter Gemini API key..."
+msgstr ""
+
+msgctxt "#32204"
+msgid "Import API key from a file..."
+msgstr ""
+
+msgctxt "#32205"
+msgid "Test the API key"
+msgstr ""
+
+msgctxt "#32206"
+msgid "Languages to leave alone..."
+msgstr ""
+
+msgctxt "#32207"
+msgid "Clear saved translations"
+msgstr ""
+
+msgctxt "#32208"
+msgid "View log"
+msgstr ""
+
+msgctxt "#32209"
+msgid "Send log..."
+msgstr ""
+
+msgctxt "#32210"
+msgid "Settings"
+msgstr ""
+
+msgctxt "#32211"
+msgid "To translate subtitles you need a free Gemini API key.[CR]1. On a phone or computer open aistudio.google.com/apikey and create a key.[CR]2. Type it here (a remote app with a keyboard, like Kore or Yatse, makes this easy), or paste it on pastebin.com as an Unlisted paste and import it from that web address."
+msgstr ""
+
+msgctxt "#32212"
+msgid "Add your API key"
+msgstr ""
+
+msgctxt "#32213"
+msgid "Later"
+msgstr ""
+
+msgctxt "#32214"
+msgid "Subtitles will be translated into {lang}. Open the settings to choose a different language?"
+msgstr ""
+
+msgctxt "#32220"
+msgid "Gemini API key"
+msgstr ""
+
+msgctxt "#32221"
+msgid "API key saved"
+msgstr ""
+
+msgctxt "#32222"
+msgid "Choose the text file with your API key"
+msgstr ""
+
+msgctxt "#32223"
+msgid "No API key found in that file."
+msgstr ""
+
+msgctxt "#32224"
+msgid "Test the key now?"
+msgstr ""
+
+msgctxt "#32225"
+msgid "No API key yet. Enter or import one first."
+msgstr ""
+
+msgctxt "#32226"
+msgid "Testing the key..."
+msgstr ""
+
+msgctxt "#32227"
+msgid "The key works.[CR]Model: {model}[CR]\"{src}\"[CR]-> \"{dst}\""
+msgstr ""
+
+msgctxt "#32228"
+msgid "Model {model} is not available to this key.[CR]Available free models: {models}"
+msgstr ""
+
+msgctxt "#32229"
+msgid "Test failed: {error}"
+msgstr ""
+
+msgctxt "#32230"
+msgid "Languages to leave alone (never translated)"
+msgstr ""
+
+msgctxt "#32232"
+msgid "Saved"
+msgstr ""
+
+msgctxt "#32233"
+msgid "Delete all saved translations?"
+msgstr ""
+
+msgctxt "#32234"
+msgid "Deleted {n} files"
+msgstr ""
+
+msgctxt "#32235"
+msgid "Asked the service to translate the current subtitle"
+msgstr ""
+
+msgctxt "#32236"
+msgid "Remove the API key"
+msgstr ""
+
+msgctxt "#32237"
+msgid "Remove the saved Gemini API key from this device?"
+msgstr ""
+
+# Log
+
+msgctxt "#32240"
+msgid "How do you want to send the log?"
+msgstr ""
+
+msgctxt "#32241"
+msgid "Upload and get a short link (paste.kodi.tv)"
+msgstr ""
+
+msgctxt "#32242"
+msgid "Save to a folder (USB stick or network share)"
+msgstr ""
+
+msgctxt "#32243"
+msgid "Show on screen"
+msgstr ""
+
+msgctxt "#32244"
+msgid "The log will be uploaded to paste.kodi.tv as a public link. Your API key, video links and tokens are removed first. Continue?"
+msgstr ""
+
+msgctxt "#32245"
+msgid "Uploading..."
+msgstr ""
+
+msgctxt "#32246"
+msgid "Uploaded. Send this link:[CR][B]{url}[/B]"
+msgstr ""
+
+msgctxt "#32247"
+msgid "Upload failed: {error}[CR]Try saving to a folder instead."
+msgstr ""
+
+msgctxt "#32248"
+msgid "Choose a folder"
+msgstr ""
+
+msgctxt "#32249"
+msgid "Saved to:[CR]{path}"
+msgstr ""
+
+msgctxt "#32250"
+msgid "Could not save: {error}"
+msgstr ""
+
+msgctxt "#32251"
+msgid "The log is empty."
+msgstr ""
+
+msgctxt "#32260"
+msgid "Something went wrong. Details are in the log."
+msgstr ""
+
+# Earlier name of the add-on
+
+msgctxt "#32270"
+msgid "Dragoman replaces {old} (its earlier name). While both are on, every subtitle is translated twice.[CR]Switch {old} off?"
+msgstr ""
+
+msgctxt "#32271"
+msgid "Could not switch {old} off. Please uninstall it: Add-ons > My add-ons > Services."
+msgstr ""
+
+msgctxt "#32272"
+msgid "{old} switched off - you can uninstall it"
+msgstr ""
+
+# API key from a web address, and checking a key before saving it
+
+msgctxt "#32273"
+msgid "Import API key from a web address..."
+msgstr ""
+
+msgctxt "#32274"
+msgid "Web address with your API key (e.g. pastebin.com/AbCd1234)"
+msgstr ""
+
+msgctxt "#32275"
+msgid "Getting the key from {host}..."
+msgstr ""
+
+msgctxt "#32276"
+msgid "Could not read the page on {host}.[CR]{error}[CR]Check the address and that the paste is not private."
+msgstr ""
+
+msgctxt "#32277"
+msgid "No API key found at that address.[CR]The page must show the key as text - for example an Unlisted paste on pastebin.com."
+msgstr ""
+
+msgctxt "#32278"
+msgid "Save this API key?[CR][B]{key}[/B][CR]{n} characters"
+msgstr ""
+
+msgctxt "#32279"
+msgid "[COLOR orange]This does not look like a Gemini key - those start with AIza and are 39 characters long.[/COLOR]"
+msgstr ""
+
+msgctxt "#32280"
+msgid "Save"
+msgstr ""
+
+msgctxt "#32281"
+msgid "Edit"
+msgstr ""
+
+msgctxt "#32282"
+msgid "Key saved on this device. You can delete the paste now.[CR][CR]Test the key now?"
+msgstr ""
+
+msgctxt "#32283"
+msgid "Found this API key:[CR][B]{key}[/B][CR]{n} characters - save it?"
+msgstr ""
+
+msgctxt "#32284"
+msgid "Cancel"
+msgstr ""
+
+msgctxt "#32285"
+msgid "Type the whole address of the page with the key, e.g. pastebin.com/AbCd1234"
+msgstr ""
+
+msgctxt "#32286"
+msgid "Your API key and settings were copied from {old}"
+msgstr ""
+
+msgctxt "#32287"
+msgid "Key not changed"
+msgstr ""
+
+msgctxt "#32288"
+msgid "Switch it off"
+msgstr ""
+
+msgctxt "#32289"
+msgid "Keep both"
+msgstr ""
+
+msgctxt "#32290"
+msgid "Ask later"
+msgstr ""
+
+msgctxt "#32291"
+msgid "Several API keys found - which one?"
+msgstr ""
+
+# Notifications
+
+msgctxt "#32300"
+msgid "Translating to {lang}..."
+msgstr ""
+
+msgctxt "#32301"
+msgid "{lang}: {done} of {total} lines"
+msgstr ""
+
+msgctxt "#32302"
+msgid "{lang} subtitles loaded"
+msgstr ""
+
+msgctxt "#32303"
+msgid "{lang} subtitles loaded ({failed} lines left untranslated)"
+msgstr ""
+
+msgctxt "#32304"
+msgid "{lang} subtitles loaded (saved translation)"
+msgstr ""
+
+msgctxt "#32305"
+msgid "Subtitle is in {lang} - left as it is"
+msgstr ""
+
+msgctxt "#32306"
+msgid "Add your Gemini API key: Program add-ons > Dragoman"
+msgstr ""
+
+msgctxt "#32307"
+msgid "Gemini's free daily quota is used up - kept the original subtitle"
+msgstr ""
+
+msgctxt "#32308"
+msgid "Gemini rejected the API key - check it in the settings"
+msgstr ""
+
+msgctxt "#32309"
+msgid "Gemini is not available in your region"
+msgstr ""
+
+msgctxt "#32310"
+msgid "Can't reach Gemini - kept the original subtitle"
+msgstr ""
+
+msgctxt "#32311"
+msgid "Gemini is busy - try again in a few minutes"
+msgstr ""
+
+msgctxt "#32312"
+msgid "Model {model} is not available - pick another one in the settings"
+msgstr ""
+
+msgctxt "#32313"
+msgid "Translation failed - details are in the log"
+msgstr ""
+
+msgctxt "#32314"
+msgid "Translate this {src} subtitle into {lang}?"
+msgstr ""
+
+msgctxt "#32315"
+msgid "the original language"
+msgstr ""
+
+msgctxt "#32316"
+msgid "Switched to {model} (daily quota of the previous model used up)"
+msgstr ""
+
+msgctxt "#32317"
+msgid "Could not read this subtitle file"
+msgstr ""
+
+msgctxt "#32318"
+msgid "Play a video first"
+msgstr ""
+
+msgctxt "#32319"
+msgid "No subtitle seen yet in this video"
+msgstr ""
+
+msgctxt "#32320"
+msgid "Translating the current subtitle..."
+msgstr ""
+
+msgctxt "#32321"
+msgid "Gemini refused the request - details are in the log"
+msgstr ""
+
+msgctxt "#32322"
+msgid "Kodi could not open the translated subtitle - details are in the log"
+msgstr ""
+
+# Language names
+
+msgctxt "#32501"
+msgid "English"
+msgstr ""
+
+msgctxt "#32502"
+msgid "Slovenian"
+msgstr ""
+
+msgctxt "#32503"
+msgid "Croatian"
+msgstr ""
+
+msgctxt "#32504"
+msgid "Serbian"
+msgstr ""
+
+msgctxt "#32505"
+msgid "Serbian (Cyrillic)"
+msgstr ""
+
+msgctxt "#32506"
+msgid "Bosnian"
+msgstr ""
+
+msgctxt "#32507"
+msgid "Macedonian"
+msgstr ""
+
+msgctxt "#32508"
+msgid "German"
+msgstr ""
+
+msgctxt "#32509"
+msgid "French"
+msgstr ""
+
+msgctxt "#32510"
+msgid "Spanish"
+msgstr ""
+
+msgctxt "#32511"
+msgid "Italian"
+msgstr ""
+
+msgctxt "#32512"
+msgid "Portuguese"
+msgstr ""
+
+msgctxt "#32513"
+msgid "Portuguese (Brazil)"
+msgstr ""
+
+msgctxt "#32514"
+msgid "Dutch"
+msgstr ""
+
+msgctxt "#32515"
+msgid "Polish"
+msgstr ""
+
+msgctxt "#32516"
+msgid "Czech"
+msgstr ""
+
+msgctxt "#32517"
+msgid "Slovak"
+msgstr ""
+
+msgctxt "#32518"
+msgid "Hungarian"
+msgstr ""
+
+msgctxt "#32519"
+msgid "Romanian"
+msgstr ""
+
+msgctxt "#32520"
+msgid "Bulgarian"
+msgstr ""
+
+msgctxt "#32521"
+msgid "Russian"
+msgstr ""
+
+msgctxt "#32522"
+msgid "Ukrainian"
+msgstr ""
+
+msgctxt "#32523"
+msgid "Greek"
+msgstr ""
+
+msgctxt "#32524"
+msgid "Turkish"
+msgstr ""
+
+msgctxt "#32525"
+msgid "Albanian"
+msgstr ""
+
+msgctxt "#32526"
+msgid "Swedish"
+msgstr ""
+
+msgctxt "#32527"
+msgid "Danish"
+msgstr ""
+
+msgctxt "#32528"
+msgid "Norwegian"
+msgstr ""
+
+msgctxt "#32529"
+msgid "Finnish"
+msgstr ""
+
+msgctxt "#32530"
+msgid "Estonian"
+msgstr ""
+
+msgctxt "#32531"
+msgid "Latvian"
+msgstr ""
+
+msgctxt "#32532"
+msgid "Lithuanian"
+msgstr ""
+
+msgctxt "#32533"
+msgid "Arabic"
+msgstr ""
+
+msgctxt "#32534"
+msgid "Hebrew"
+msgstr ""
+
+msgctxt "#32535"
+msgid "Persian"
+msgstr ""
+
+msgctxt "#32536"
+msgid "Hindi"
+msgstr ""
+
+msgctxt "#32537"
+msgid "Chinese (Simplified)"
+msgstr ""
+
+msgctxt "#32538"
+msgid "Chinese (Traditional)"
+msgstr ""
+
+msgctxt "#32539"
+msgid "Japanese"
+msgstr ""
+
+msgctxt "#32540"
+msgid "Korean"
+msgstr ""
+
+msgctxt "#32541"
+msgid "Vietnamese"
+msgstr ""
+
+msgctxt "#32542"
+msgid "Thai"
+msgstr ""
+
+msgctxt "#32543"
+msgid "Indonesian"
+msgstr ""
+
+msgctxt "#32544"
+msgid "Malay"
+msgstr ""
