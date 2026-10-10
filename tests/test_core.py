@@ -189,6 +189,47 @@ class TranslatorTests(unittest.TestCase):
         self.assertEqual(calls[1][1]['context_before'][-1], 'SL:line 9')
         self.assertEqual(calls[0][1]['title'], 'Film')
 
+    def test_characters_speaker_and_context_after(self):
+        """Gender fix: who-is-who first, then every chunk carries it, the next lines and the cast."""
+        characters = lambda p: json.dumps({'characters': [  # noqa: E731
+            {'name': 'Patrick Jane', 'gender': 'Male', 'note': 'consultant, works for Lisbon'},
+            {'name': 'Teresa Lisbon', 'gender': 'female', 'note': 'his boss; called "Boss"'},
+            {'name': 'Bob', 'gender': 'n/a'}, {'name': '', 'gender': 'male'}]})
+        texts = ['line %d' % i for i in range(25)]
+        tr, calls, _w = self.make([characters], cast=['Patrick Jane (Simon Baker)', 'Teresa Lisbon (Robin Tunney)'])
+        found = tr.find_characters(texts)
+        self.assertEqual(found, ['Patrick Jane: male. consultant, works for Lisbon',
+                                 'Teresa Lisbon: female. his boss; called "Boss"', 'Bob: gender unknown'])
+        first = calls[0][1]
+        self.assertIn('line 0\nline 1', first['dialogue'])
+        self.assertEqual(first['cast'][0], 'Patrick Jane (Simon Baker)')
+        out, failed = tr.translate(texts)
+        self.assertEqual(failed, 0)
+        chunk1, chunk2, chunk3 = [c[1] for c in calls[1:]]
+        self.assertEqual(chunk1['characters'], found)
+        self.assertEqual(chunk1['context_after'], ['line %d' % i for i in range(10, 16)])
+        self.assertEqual(chunk2['context_before'][-1], 'SL:line 9')
+        self.assertNotIn('context_after', chunk3)
+        self.assertEqual(chunk3['cast'][1], 'Teresa Lisbon (Robin Tunney)')
+        # the answer names the speaker before the text, so the model settles who is talking first
+        item = translator.SCHEMA['properties']['cues']['items']
+        self.assertEqual(item['propertyOrdering'], ['id', 'speaker', 'text'])
+        self.assertIn('speaker', translator.system_prompt('bs'))
+        self.assertIn('gender', translator.system_prompt('bs'))
+
+    def test_character_request_problems_do_not_stop_the_translation(self):
+        tr, calls, _w = self.make([GeminiError('server', 'boom', 503)])
+        self.assertEqual(tr.find_characters(['line %d' % i for i in range(20)]), [])
+        out, failed = tr.translate(['line %d' % i for i in range(5)])
+        self.assertEqual((out[0], failed), ('SL:line 0', 0))
+        self.assertNotIn('characters', calls[-1][1])
+        self.assertEqual(translator.parse_characters('not json'), [])
+        self.assertEqual(translator.parse_characters('{"characters": "x"}'), [])
+        # too little dialogue: no request at all
+        tr, calls, _w = self.make()
+        self.assertEqual(tr.find_characters(['hi', '', 'yo']), [])
+        self.assertEqual(calls, [])
+
     def test_bad_answer_retry_then_split(self):
         bad = lambda p: json.dumps({'cues': [{'id': 1, 'text': 'x'}]})  # noqa: E731
         script = [bad, bad]  # first chunk of 10 fails twice -> split into 5 + 5 -> ok

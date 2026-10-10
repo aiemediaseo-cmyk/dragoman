@@ -35,7 +35,7 @@ old one afterwards.
 
 ## Privacy
 
-Only subtitle text, the title and the plot are sent to Google; timings stay on your device. On
+Only subtitle text, the title, the plot and the cast names are sent to Google; timings stay on your device. On
 Gemini's free tier, Google may use the content to improve its products. The API key is never
 written to logs or uploaded log reports.
 

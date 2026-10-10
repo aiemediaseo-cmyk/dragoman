@@ -25,9 +25,9 @@ def output_temp_dir():
     return kodi.translate_path(TEMP_OUT)
 
 
-def estimate_minutes(lines, chunk_size, rpm, seconds_per_request=9.0):
+def estimate_minutes(lines, chunk_size, rpm, seconds_per_request=9.0, extra_requests=0):
     """Rough time for a translation: one request per chunk, at most `rpm` a minute."""
-    requests = max(1, -(-max(0, lines) // max(1, chunk_size)))
+    requests = max(1, -(-max(0, lines) // max(1, chunk_size))) + extra_requests
     seconds = requests * max(seconds_per_request, 60.0 / max(1, rpm))
     return max(1, int(seconds / 60.0 + 0.5))
 
@@ -172,7 +172,8 @@ class TranslationJob(threading.Thread):
             final = saved['texts']
             self.log.info('using saved translation %s' % key)
         else:
-            final, failed = self._translate(texts, lang, target, store, key, saved.get('chunks') or {})
+            final, failed = self._translate(texts, lang, target, store, key, saved.get('chunks') or {},
+                                            saved.get('characters'))
         if self.cancelled:
             raise translator.Cancelled()
         content = srt.compose(cues, final)
@@ -214,14 +215,15 @@ class TranslationJob(threading.Thread):
             return bool(xbmcgui.Dialog().yesno(
                 kodi.addon_name(), kodi.text(32314, src=language_label(lang), lang=language_label(target))))
 
-    def _translate(self, texts, lang, target, store, key, chunks):
+    def _translate(self, texts, lang, target, store, key, chunks, characters=None):
         cfg = self.cfg
         self.log.info('translating %d cues %s -> %s with %s (chunk %d, %d/min)' % (
             len(texts), lang or '?', target, cfg.models[0], cfg.chunk_size, cfg.rpm))
         self._progress_open(target, len(texts))
         remaining = len(texts) - sum(len(v) for v in chunks.values())
         kodi.notify(kodi.text(32323, n=remaining, lang=language_label(target),
-                              min=estimate_minutes(remaining, cfg.chunk_size, cfg.rpm)), 6000)
+                              min=estimate_minutes(remaining, cfg.chunk_size, cfg.rpm,
+                                                   extra_requests=0 if characters else 1)), 6000)
 
         def make_client(model):
             return gemini.GeminiClient(cfg.api_key, model, user_agent='Kodi-Dragoman/%s' % kodi.addon_version(),
@@ -229,7 +231,8 @@ class TranslationJob(threading.Thread):
 
         def on_chunk(index, chunk_texts):
             chunks[str(index)] = chunk_texts
-            store.save(key, {'complete': False, 'chunks': chunks, 'target': target})
+            store.save(key, {'complete': False, 'chunks': chunks, 'target': target,
+                             'characters': engine.characters})
 
         def on_switch(model):
             kodi.notify(kodi.text(32316, model=model), 5000)
@@ -241,15 +244,27 @@ class TranslationJob(threading.Thread):
             chunk_size=cfg.chunk_size, rpm=cfg.rpm, wait=self._wait, log=self.log.debug,
             progress=lambda done, total: self._progress_update(target, done, total),
             fallback=cfg.fallback, on_model_switch=on_switch, is_cancelled=lambda: self.cancelled,
-            check_unchanged=not (self.forced or close))
+            check_unchanged=not (self.forced or close), cast=self.meta.get('cast'),
+            characters=characters if isinstance(characters, list) else None)
         self.engine = engine
         if self.cancelled:
             raise translator.Cancelled()
+        if engine.characters:
+            self.log.info('characters (saved): %s' % '; '.join(c.split('.')[0] for c in engine.characters))
+        else:
+            # who is who, and male or female: lets the translation get he/she forms right
+            engine.find_characters(texts)
+            self.log.info('characters: %s' % ('; '.join(c.split('.')[0] for c in engine.characters)
+                                              or 'none found'))
+            if engine.characters:
+                store.save(key, {'complete': False, 'chunks': chunks, 'target': target,
+                                 'characters': engine.characters})
         final, failed = engine.translate(texts, chunks, on_chunk)
         self.log.info('translated %d cues with %d requests (%d splits), %d kept in the original' % (
             len(texts), engine.requests, engine.splits, failed))
         if failed == 0:
-            store.save(key, {'complete': True, 'texts': final, 'target': target, 'model': engine.model})
+            store.save(key, {'complete': True, 'texts': final, 'target': target, 'model': engine.model,
+                             'characters': engine.characters})
         return final, failed
 
     def _file_name(self, target):

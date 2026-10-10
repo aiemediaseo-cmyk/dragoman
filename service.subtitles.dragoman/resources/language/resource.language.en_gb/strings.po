@@ -95,7 +95,7 @@ msgid "Use another free model when the daily quota runs out"
 msgstr ""
 
 msgctxt "#32128"
-msgid "Subtitle text and titles are sent to Google. On the free tier Google may use them to improve its products."
+msgid "Subtitle text, titles, plots and cast names are sent to Google. On the free tier Google may use them to improve its products."
 msgstr ""
 
 msgctxt "#32140"

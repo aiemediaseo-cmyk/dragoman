@@ -70,14 +70,31 @@ class FakeGemini(object):
             data = {'models': [{'name': 'models/gemini-3.5-flash-lite', 'supportedGenerationMethods': ['generateContent']}]}
         else:
             user = json.loads(body['contents'][0]['parts'][0]['text'])
-            cues = [{'id': c['id'], 'text': '[sl] ' + c['text']} for c in user['cues']]
-            data = {'candidates': [{'content': {'parts': [{'text': json.dumps({'cues': cues})}]},
+            if 'dialogue' in user:          # the "who are the characters" request
+                answer = {'characters': [{'name': 'Jane', 'gender': 'male', 'note': 'consultant'},
+                                         {'name': 'Lisbon', 'gender': 'female', 'note': 'his boss'}]}
+            else:
+                answer = {'cues': [{'id': c['id'], 'speaker': '?', 'text': '[sl] ' + c['text']}
+                                   for c in user['cues']]}
+            data = {'candidates': [{'content': {'parts': [{'text': json.dumps(answer)}]},
                                     'finishReason': 'STOP'}],
                     'usageMetadata': {'promptTokenCount': 100, 'candidatesTokenCount': 120}}
         return 200, json.dumps(data).encode('utf-8')
 
     def generate_calls(self):
-        return [r for r in self.requests if r[0].endswith(':generateContent')]
+        """Translation requests (the character request is listed by character_calls)."""
+        return [r for r in self.requests if r[0].endswith(':generateContent') and not self._is_characters(r)]
+
+    def character_calls(self):
+        return [r for r in self.requests if r[0].endswith(':generateContent') and self._is_characters(r)]
+
+    @staticmethod
+    def _is_characters(request):
+        body = request[1] or {}
+        try:
+            return 'dialogue' in json.loads(body['contents'][0]['parts'][0]['text'])
+        except (KeyError, IndexError, ValueError, TypeError):
+            return False
 
 
 class Base(unittest.TestCase):
@@ -268,6 +285,47 @@ class StreamTests(Base):
         self.assertEqual(len(STATE.loaded_subs), 1)
         self.assertNotIn('same subtitle', self.log())
 
+    def test_cast_and_characters_reach_gemini_and_are_saved(self):
+        def play():
+            STATE.playing = True
+            STATE.file = STREAM
+            STATE.total = 6000.0
+            STATE.meta = {'title': 'Red Sky at Night', 'show': 'The Mentalist', 'season': 3, 'episode': 1,
+                          'plot': 'A body in a lake.',
+                          'actors': [('Robin Tunney', 'Teresa Lisbon', 1), ('Simon Baker', 'Patrick Jane', 0),
+                                     ('Tim Kang', 'Kimball Cho', 2)]}
+            self.player().onAVStarted()
+
+        def stop():
+            STATE.playing = False
+            self.player().onPlayBackStopped()
+
+        self.run_service({2: play, 4: self.open_dialog,
+                          6: lambda: self.pick('TempSubtitle.en.srt', EN), 7: self.join_job,
+                          20: stop, 22: play, 24: self.open_dialog,
+                          26: lambda: self.pick('TempSubtitle.en.srt', EN + ' '), 27: self.join_job,
+                          30: lambda: setattr(STATE, 'abort', True)})
+        log = self.log()
+        self.assertIn('cast 3', log)
+        self.assertIn('characters: Jane: male; Lisbon: female', log)
+        first = json.loads(self.fake.character_calls()[0][1]['contents'][0]['parts'][0]['text'])
+        self.assertEqual(first['cast'], ['Patrick Jane (Simon Baker)', 'Teresa Lisbon (Robin Tunney)',
+                                         'Kimball Cho (Tim Kang)'])
+        chunk = json.loads(self.fake.generate_calls()[0][1]['contents'][0]['parts'][0]['text'])
+        self.assertEqual(chunk['characters'], ['Jane: male. consultant', 'Lisbon: female. his boss'])
+        # second time: the saved translation is used, no new requests at all
+        self.assertEqual(len(self.fake.character_calls()), 1)
+        self.assertEqual(len(self.fake.generate_calls()), 1)
+        self.assertEqual(len(STATE.loaded_subs), 2)
+
+    def test_kodi_19_cast_text(self):
+        from resources.lib.dragoman.service import TranslatorService
+        from xbmc import InfoTagVideo
+        tag = InfoTagVideo({'cast_text': 'Simon Baker as Patrick Jane\nRobin Tunney as Teresa Lisbon\nNarrator'})
+        self.assertEqual(TranslatorService.read_cast(tag),
+                         ['Patrick Jane (Simon Baker)', 'Teresa Lisbon (Robin Tunney)', 'Narrator'])
+        self.assertEqual(TranslatorService.read_cast(InfoTagVideo({})), [])
+
     def test_stopping_playback_mid_translation_says_the_work_is_kept(self):
         def stop():
             STATE.playing = False
@@ -335,9 +393,12 @@ class StreamTests(Base):
         self.run_service({2: self.start_play, 4: self.open_dialog,
                           6: lambda: self.pick('TempSubtitle.en.srt', EN), 7: self.join_job,
                           10: lambda: setattr(STATE, 'abort', True)})
-        urls = [r[0] for r in self.fake.generate_calls()]
+        # the first request (who are the characters) hits the daily quota: switch, then carry on there
+        urls = [r[0] for r in self.fake.requests if r[0].endswith(':generateContent')]
+        self.assertEqual(len(urls), 3)
         self.assertIn('gemini-3.5-flash-lite', urls[0])
         self.assertIn('gemini-3.6-flash', urls[1])
+        self.assertIn('gemini-3.6-flash', self.fake.generate_calls()[0][0])
         self.assertEqual(len(STATE.loaded_subs), 1)
         self.assertIn('Switched to gemini-3.6-flash (daily quota of the previous model used up)', self.toasts())
 

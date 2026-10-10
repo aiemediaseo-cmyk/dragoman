@@ -309,8 +309,9 @@ class TranslatorService(object):
         s.stream_count = len(_try(self.player.getAvailableSubtitleStreams, []) or [])
         s.roots = self.build_roots(playing_file)
         s.snapshot, stats = scanner.snapshot(s.roots, self.skip_paths())
-        self.log.info('playback started (%s): %s | title %r | %d subtitle streams' % (
-            reason, util.safe_location(playing_file), s.meta.get('title'), s.stream_count))
+        self.log.info('playback started (%s): %s | title %r | %d subtitle streams | cast %d' % (
+            reason, util.safe_location(playing_file), s.meta.get('title'), s.stream_count,
+            len(s.meta.get('cast') or [])))
         self.log.info('watching: ' + self.roots_summary(s, stats))
         for root in s.roots:
             root.last_error = (stats.get(root.label) or {}).get('error')
@@ -332,8 +333,31 @@ class TranslatorService(object):
         with self.lock:
             return self.session is not None and self.session.id == session_id
 
+    @staticmethod
+    def read_cast(tag, limit=25):
+        """['Character (Actor)', ...] from Kodi: getActors() on Kodi 20+, getCast() text on Kodi 19."""
+        people = []
+        actors = _try(getattr(tag, 'getActors', None) or (lambda: None))
+        if actors:
+            ranked = []
+            for n, actor in enumerate(actors):
+                name = _try(actor.getName, '') or ''
+                role = _try(actor.getRole, '') or ''
+                order = _try(actor.getOrder, n)
+                ranked.append((order if isinstance(order, int) and order >= 0 else n, n, name, role))
+            for _order, _n, name, role in sorted(ranked):
+                people.append('%s (%s)' % (role, name) if role and name else (role or name))
+        else:
+            text = _try(getattr(tag, 'getCast', None) or (lambda: ''), '') or ''
+            for line in text.splitlines():           # Kodi 19: "Actor as Role" per line
+                name, _sep, role = line.partition(' as ')
+                name, role = name.strip(), role.strip()
+                if name or role:
+                    people.append('%s (%s)' % (role, name) if role and name else (role or name))
+        return [p for p in people if p][:limit]
+
     def read_meta(self, playing_file):
-        meta = {'title': '', 'plot': '', 'stem': ''}
+        meta = {'title': '', 'plot': '', 'stem': '', 'cast': []}
         tag = _try(self.player.getVideoInfoTag)
         title = show = ''
         season = episode = -1
@@ -345,6 +369,7 @@ class TranslatorService(object):
             episode = _try(tag.getEpisode, -1)
             year = _try(tag.getYear, 0) or 0
             meta['plot'] = _try(tag.getPlot, '') or ''
+            meta['cast'] = self.read_cast(tag)
         if show:
             label = show
             if season is not None and season >= 0 and episode is not None and episode >= 0:

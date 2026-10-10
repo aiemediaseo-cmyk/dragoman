@@ -49,9 +49,35 @@ def executeJSONRPC(request):
     return json.dumps({'id': 1, 'jsonrpc': '2.0', 'result': result})
 
 
+class Actor(object):
+    def __init__(self, name='', role='', order=-1, thumbnail=''):
+        self._v = (name, role, order, thumbnail)
+
+    def getName(self):
+        return self._v[0]
+
+    def getRole(self):
+        return self._v[1]
+
+    def getOrder(self):
+        return self._v[2]
+
+    def getThumbnail(self):
+        return self._v[3]
+
+
 class InfoTagVideo(object):
     def __init__(self, meta):
         self._m = meta
+
+    def getActors(self):
+        # Kodi 20+; meta 'cast_text' simulates Kodi 19, which only has getCast()
+        if 'cast_text' in self._m:
+            raise AttributeError('getActors')
+        return [Actor(*a) for a in self._m.get('actors', [])]
+
+    def getCast(self):
+        return self._m.get('cast_text', '')
 
     def getTitle(self):
         return self._m.get('title', '')

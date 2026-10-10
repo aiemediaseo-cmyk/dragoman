@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="service.subtitles.dragoman" name="Dragoman" version="0.2.2" provider-name="AIE Media">
+<addon id="service.subtitles.dragoman" name="Dragoman" version="0.3.0" provider-name="AIE Media">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
     </requires>
@@ -11,12 +11,12 @@
         <summary lang="en_GB">Your subtitle interpreter: translates subtitles into your language while the video keeps playing</summary>
         <description lang="en_GB">When a subtitle is loaded during playback (picked in the subtitle dialog, downloaded automatically by a subtitle add-on, or found next to the video), Dragoman translates it into your language with Google Gemini and switches to the translation when it is ready. Playback never pauses. Subtitles already in your language, or in languages you choose to leave alone, are not translated. Works for streams and local files on any Kodi 19+ device.
 
-You need your own free Gemini API key (aistudio.google.com/apikey). Type it in, or import it from a web address such as an unlisted Pastebin paste. Only the subtitle text, the title and the plot are sent; timings stay on your device.
+You need your own free Gemini API key (aistudio.google.com/apikey). Type it in, or import it from a web address such as an unlisted Pastebin paste. Only the subtitle text, the title, the plot and the cast names are sent; timings stay on your device.
 
-Privacy: subtitle text and titles are sent to Google. On Gemini's free tier, Google may use this content to improve its products.
+Privacy: subtitle text, titles, plots and cast names are sent to Google. On Gemini's free tier, Google may use this content to improve its products.
 
 A dragoman was the interpreter who stood between travellers and the language around them.</description>
-        <disclaimer lang="en_GB">Subtitle text and titles are sent to Google for translation. On the free tier Google may use them to improve its products. Machine translation can contain mistakes.</disclaimer>
+        <disclaimer lang="en_GB">Subtitle text, titles, plots and cast names are sent to Google for translation. On the free tier Google may use them to improve its products. Machine translation can contain mistakes.</disclaimer>
         <platform>all</platform>
         <license>GPL-2.0-or-later</license>
         <source>https://github.com/aiemediaseo-cmyk/dragoman</source>
@@ -24,7 +24,8 @@ A dragoman was the interpreter who stood between travellers and the language aro
             <icon>resources/icon.png</icon>
             <fanart>resources/fanart.jpg</fanart>
         </assets>
-        <news>v0.2.2 - English subtitles are no longer taken for Croatian or Serbian (a stray word like "sad" or "ja" could tip the language check); the language in the file name now wins unless the text clearly says otherwise. A notice says how long a translation will take, and stopping playback mid-translation tells you the finished part is kept.
+        <news>v0.3.0 - Better male and female forms: Dragoman first works out who the characters are (from the dialogue, title, plot and cast) and has Gemini decide who is speaking before translating each line, so "I was tired" comes out as "bio sam" or "bila sam" correctly far more often, and formal or informal "you" stays consistent. Subtitles translated with earlier versions are translated again once.
+v0.2.2 - English subtitles are no longer taken for Croatian or Serbian (a stray word like "sad" or "ja" could tip the language check); the language in the file name now wins unless the text clearly says otherwise. A notice says how long a translation will take, and stopping playback mid-translation tells you the finished part is kept.
 v0.2.1 - Dragoman now lives on GitHub and installs and updates through the Dragoman Repository (repository.dragoman).
 v0.2.0 - new name: Dragoman (was AI Subtitle Translator; your key and settings are copied over, and it offers to switch the old add-on off). New icon. The API key is shown in full while you type it and before it is saved. New: import the key from a web address (Pastebin, paste.kodi.tv, GitHub gist, Dropbox, Google Drive).
 v0.1.3 - the translated subtitle is written where Kodi can always open it (plain file name, Kodi's temp folder); the add-on checks that Kodi really switched to it and tries a second place if not.</news>
