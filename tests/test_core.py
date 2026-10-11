@@ -12,7 +12,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ADDON = os.path.join(os.path.dirname(HERE), 'service.subtitles.dragoman')
 sys.path.insert(0, ADDON)
 
-from resources.lib.dragoman import cache, gemini, langdetect, languages, srt, translator  # noqa: E402
+from resources.lib.dragoman import cache, gemini, langdetect, languages, srt, timing, translator  # noqa: E402
 from resources.lib.dragoman.gemini import GeminiError  # noqa: E402
 
 EN = (u"Where were you last night?\nI was at home. What's wrong with you?\nYou know what I mean. "
@@ -639,6 +639,216 @@ class KeySourceTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
 
+
+
+def episode_cues(minutes=42, every_s=6, scale=1.0, shift_s=0.0, first_s=3.0, end_gap_s=60.0):
+    """Dialogue every few seconds from first_s until end_gap_s before the end, then timing
+    distorted like a subtitle made for another version: sub = video * scale + shift."""
+    cues, t = [], first_s
+    while t < minutes * 60 - end_gap_s:
+        start = int((t * scale + shift_s) * 1000)
+        cues.append(srt.Cue(start, start + 2000, 'Line %d of the dialogue.' % len(cues)))
+        t += every_s
+    return cues
+
+
+class TimingTests(unittest.TestCase):
+    EP = 42 * 60 * 1000
+
+    def test_frame_rates(self):
+        self.assertEqual([timing.norm_fps(v) for v in ('23.976', '24.000', '25.000', '29.970', '50.000',
+                                                         '59.940', '0.000', '', None)],
+                         [23.976, 24.0, 25.0, 23.976, 25.0, 23.976, None, None, None])
+        self.assertEqual([timing.name_fps(n) for n in ('Show.S01E01.25fps', 'Film.23.976fps.srt', 'Film.PAL.DVDRip',
+                                                       'Napalm.Death', 'x.125fps')],
+                         [25.0, 23.976, 25.0, None, None])
+        self.assertEqual(len(timing.RATIOS), 7)
+
+    def test_drift_from_frame_rate_is_found_and_sure(self):
+        # made for the 23.976 fps release, playing on a 25 fps video: runs 4 % too slow
+        cues = episode_cues(scale=25 / 23.976)
+        d = timing.drift_check(cues, self.EP, '25.000', 'Show.S01E01.HDTV', 'Show.S01E01.WEB-DL.eng')
+        self.assertEqual((d['ratio'], d['certain'], d['from_fps'], d['to_fps']), (0.95904, True, 23.976, 25.0))
+        fixed, _t = timing.retime(cues, d['ratio'], 0)
+        self.assertLess(fixed[-1].end, self.EP)
+        self.assertAlmostEqual(fixed[-1].start / 1000.0, cues[-1].start / 1000.0 * 0.95904, delta=0.01)
+
+    def test_a_plain_delay_is_not_taken_for_drift(self):
+        cues = episode_cues(shift_s=150)          # everything two and a half minutes late
+        d = timing.drift_check(cues, self.EP, '25.000')
+        self.assertFalse(d['certain'])           # could be a delay: ask / suggest, never fix by itself
+        self.assertIn('plain delay', d['reason'])
+        d = timing.drift_check(cues, self.EP, '23.976')
+        self.assertIsNone(d['ratio'])             # nothing runs slower than 23.976: Sync assistant
+        self.assertIsNone(timing.drift_check(episode_cues(), self.EP, '25.000'))   # fine as it is
+
+    def test_trailing_adverts_and_hints(self):
+        cues = episode_cues() + [srt.Cue(self.EP + 5000, self.EP + 9000, 'Subtitles by www.example.org')] * 3
+        self.assertIsNone(timing.drift_check(cues, self.EP, '25.000'))
+        # the subtitle's name says PAL (25 fps), the video is 23.976 and stretching fits: a hint only
+        cues = episode_cues(scale=23.976 / 25)
+        d = timing.drift_check(cues, self.EP, '23.976', sub_name='Show.S01E01.PAL.HDTV.srt')
+        self.assertEqual((d['ratio'], d['certain']), (1.042709, False))
+        self.assertIsNone(timing.drift_check(cues[:10], self.EP, '25.000'))   # too little to judge
+
+    def test_extra_lines_after_the_end_are_not_drift(self):
+        # a correct subtitle with "next time on ..." lines 5-17 s past the end of a 25 fps video
+        cues = episode_cues(end_gap_s=20) + [srt.Cue(self.EP + s * 1000, self.EP + s * 1000 + 2500, 'Next time.')
+                                              for s in (5, 11, 17)]
+        self.assertIsNone(timing.drift_check(cues, self.EP, '25.000'))
+        # more of them, but after a long pause (the credits): still not dialogue running on
+        cues = episode_cues(end_gap_s=20) + [srt.Cue(self.EP + s * 1000, self.EP + s * 1000 + 2500, 'Later.')
+                                              for s in range(70, 130, 6)]
+        self.assertIsNone(timing.drift_check(cues, self.EP, '25.000'))
+        # a song over trimmed credits, marked as lyrics
+        cues = episode_cues(end_gap_s=5) + [srt.Cue(self.EP + s * 1000, self.EP + s * 1000 + 3500,
+                                                    u'♪ Somewhere over the hills ♪') for s in range(0, 40, 4)]
+        self.assertIsNone(timing.drift_check(cues, self.EP, '25.000'))
+        # the same lyrics unmarked on a 45-minute episode: they run on by far less than a frame
+        # rate would make them - never sure
+        cues = episode_cues(minutes=45, end_gap_s=2) + [
+            srt.Cue(45 * 60000 + s * 1000, 45 * 60000 + s * 1000 + 3500, 'Somewhere over the hills')
+            for s in range(0, 40, 4)]
+        d = timing.drift_check(cues, 45 * 60000, '25.000')
+        self.assertFalse(d and d['certain'], d)
+
+    def test_odd_lines_and_endings_say_nothing(self):
+        # one line with a typo in its end time (3:00 --> 53:00) in a correct subtitle
+        cues = episode_cues()
+        cues[30] = srt.Cue(cues[30].start, 53 * 60000, cues[30].text)
+        self.assertIsNone(timing.drift_check(cues, self.EP, '25.000'))
+        self.assertIsNone(timing.drift_check(cues, self.EP, '23.976'))
+        # a correct subtitle with a "next time on" block right after the last scene, 23.976 fps video
+        cues = episode_cues(end_gap_s=1) + [srt.Cue(self.EP + s * 1000, self.EP + s * 1000 + 2500, 'Next time.')
+                                             for s in range(4, 28, 4)]
+        self.assertIsNone(timing.drift_check(cues, self.EP, '23.976'))
+
+    def test_drift_through_a_song_is_still_found(self):
+        # the last minute and a half before the video's end is a song (lyrics marked): the
+        # dialogue past the end follows the song without a pause, so it still counts
+        cues = episode_cues(scale=25 / 23.976)
+        for n, c in enumerate(cues):
+            if 2430000 <= c.start <= 2525000:
+                cues[n] = srt.Cue(c.start, c.end, u'\u266a la la la \u266a')
+        d = timing.drift_check(cues, self.EP, '25.000')
+        self.assertEqual((d['ratio'], d['certain']), (0.95904, True), d)
+        # a long silent stretch right before the lines past the end (and a dozen of them):
+        # found, but only suggested
+        cues = [c for c in episode_cues(scale=25 / 23.976, end_gap_s=30) if not 2440000 <= c.start <= 2522000]
+        d = timing.drift_check(cues, self.EP, '25.000')
+        self.assertEqual((d['ratio'], d['certain']), (0.95904, False), d)
+        self.assertIn('long pause', d['reason'])
+
+    def test_unknown_frame_rate_is_never_sure(self):
+        cues = episode_cues(scale=25 / 23.976)
+        for fps in ('', '0.000', None):
+            d = timing.drift_check(cues, self.EP, fps)
+            self.assertEqual((d['ratio'], d['certain']), (0.95904, False), fps)
+            self.assertIn('does not report', d['reason'])
+        # a frame rate in the video's name helps choose, but is not Kodi's word for it either
+        d = timing.drift_check(cues, self.EP, '', 'Show.S01E01.PAL.DVDRip.mkv')
+        self.assertEqual((d['ratio'], d['certain'], d['to_fps']), (0.95904, False, 25.0))
+        # 23.976 vs 24 changes too little to show at the end: not looked for
+        d = timing.drift_check(episode_cues(scale=24 / 23.976, end_gap_s=1), self.EP, '24.000')
+        self.assertTrue(d is None or d['ratio'] is None, d)
+
+    def test_another_edition_or_a_delay_is_not_a_frame_rate(self):
+        film = 100 * 60 * 1000
+        extended = episode_cues(minutes=106, end_gap_s=180)      # 6 minutes more film, 3 of credits
+        d = timing.drift_check(extended, film, '25.000', 'Film.2010.1080p.HDTV.x264.mkv',
+                               'Film.2010.EXTENDED.1080p.BluRay.x264.srt')
+        self.assertIsNone(d['ratio'])
+        self.assertIn('another edition (extended)', d['reason'])
+        # a plain delay with a credit line for the translator at 0:00
+        cues = [srt.Cue(0, 4000, 'Prevod i obrada: Marko')] + episode_cues(every_s=4, shift_s=90, end_gap_s=5)
+        d = timing.drift_check(cues, self.EP, '25.000')
+        self.assertIsNone(d['ratio'])
+        self.assertIn('plain delay', d['reason'])
+        # a small delay is not worth a notice (the Sync assistant is there when it shows)
+        cues = [srt.Cue(0, 4000, 'Prevod i obrada: Marko')] + episode_cues(every_s=4, shift_s=30, end_gap_s=5)
+        self.assertIsNone(timing.drift_check(cues, self.EP, '25.000'))
+        self.assertEqual([c.text for c in timing.real_cues([srt.Cue(0, 1, t) for t in (
+            'Prevod i obrada: Marko', 'Prijevod: Ana', 'Untertitel: XY', u'\u00dcbersetzung: Z', 'Hello.')])],
+            ['Hello.'])
+
+    def test_fit_from_sync_points(self):
+        k = 25 / 23.976
+        self.assertEqual(timing.fit([]), (1.0, 0.0, 'none'))
+        self.assertEqual(timing.fit([(600000, 602400)]), (1.0, 2400.0, 'offset'))
+        k1, b1, how = timing.fit([(600000, 602400)], ratio=k)        # a frame-rate fix plus a delay
+        self.assertEqual(how, 'offset')
+        self.assertAlmostEqual(k1 * 600000 + b1, 602400, places=3)
+        s1, s2 = 300000, 2000000
+        k2, b2, how = timing.fit([(s1, k * s1 + 1500), (s2, k * s2 + 1750)])
+        self.assertEqual((round(k2, 6), how), (1.042709, 'drift'))
+        self.assertAlmostEqual(b2, 1750, delta=5)       # through the newest point: where the film is now
+        self.assertEqual(timing.fit([(s1, s1 + 1000), (s2, s2 + 31000)])[2], 'uneven')   # a cut in between
+        self.assertEqual(timing.fit([(s1, s1 + 1000), (s2, s2 + 31000)])[1], 31000)
+        self.assertEqual(timing.fit([(s1, s1 + 1000), (s1 + 60000, s1 + 61800)]), (1.0, 1800.0, 'offset'))
+        # newest point + the one farthest from it
+        self.assertEqual(timing.pick_points([(1, 1), (5, 5), (9, 9)]), [(1, 1), (9, 9)])
+
+    def test_fit_needs_a_real_speed_and_both_points_on_the_line(self):
+        import random
+        rnd = random.Random(7)
+        # 12 s of extra footage between two points 40 minutes apart looks like 24/23.976 drift
+        s1, s2 = 5 * 60000, 45 * 60000
+        k, b, how = timing.fit([(s1, s1 + 2000), (s2, s2 + 14000)])
+        self.assertEqual((k, b, how), (1.0, 14000.0, 'uneven'))
+        # a plain 2.4 s delay synced twice 9 minutes apart, each press up to 0.3 s off
+        hows = set()
+        for _ in range(2000):
+            a, c = 600000, 600000 + 9 * 60000
+            k, b, how = timing.fit([(a, a + 2400 + rnd.uniform(-300, 300)), (c, c + 2400 + rnd.uniform(-300, 300))])
+            hows.add((k, how))
+            self.assertLess(abs(b - 2400), 301)
+        self.assertEqual(hows, {(1.0, 'offset')})
+        # real 23.976 -> 25 drift, synced 20 minutes apart with the same press error
+        r = 23.976 / 25
+        for _ in range(500):
+            a, c = 300000, 300000 + 20 * 60000
+            k, b, how = timing.fit([(a, r * a + 900 + rnd.uniform(-300, 300)), (c, r * c + 900 + rnd.uniform(-300, 300))])
+            self.assertEqual((k, how), (0.95904, 'drift'))
+        # 23.976 vs 24 is believed only when the points are far enough apart to show it
+        r = 24 / 23.976
+        self.assertEqual(timing.fit([(s1, r * s1), (s2, r * s2)])[::2], (1.001001, 'drift'))      # 2.4 s apart
+        self.assertEqual(timing.fit([(s1, r * s1), (s1 + 20 * 60000, r * (s1 + 20 * 60000))])[::2],
+                         (1.0, 'offset'))                                                            # 1.2 s
+
+    def test_kodi_language_names(self):
+        self.assertEqual([languages.kodi_name(c) for c in ('hr', 'sr-Cyrl', 'pt-BR', 'zh', 'zh-Hant', 'lv', '', 'xx')],
+                         ['Croatian', 'Serbian', 'Portuguese (Brazil)', 'Chinese', 'Chinese', 'Latvian', '', ''])
+
+    def test_retime_keeps_texts_paired_and_drops_lines_before_zero(self):
+        cues = [srt.Cue(500, 1500, 'a'), srt.Cue(3000, 4000, 'b'), srt.Cue(10000, 11000, 'c')]
+        out, texts = timing.retime(cues, 1.0, -3500, ['A', 'B', 'C'])
+        self.assertEqual([(c.start, c.end) for c in out], [(0, 500), (6500, 7500)])
+        self.assertEqual(texts, ['B', 'C'])
+        self.assertIn('00:00:06,500 --> 00:00:07,500\nC', timing.compose(cues, ['A', 'B', 'C'], (1.0, -3500)))
+
+    def test_fix_store(self):
+        base = tempfile.mkdtemp()
+        try:
+            store = timing.FixStore(os.path.join(base, 'profile'))
+            key = timing.fix_key(timing.video_key('The.Film.2021.1080p.WEB.mkv'), 'abc')
+            self.assertIsNone(store.mapping(key))
+            rec = store.add_point(key, 600000, 602400, 'The Film')
+            self.assertEqual((rec['k'], rec['b'], rec['how']), (1.0, 2400.0, 'offset'))
+            k = 25 / 23.976
+            store.add_point(key, 2000000, int(2000000 * k + 2400 - 600000 * (k - 1) + 0))
+            self.assertEqual(store.get(key)['how'], 'drift')
+            self.assertTrue(store.delete(key))
+            self.assertFalse(store.delete(key))
+            rec = store.set_ratio(key, 0.95904)
+            self.assertEqual((rec['k'], rec['how']), (0.95904, 'framerate'))
+            rec = store.add_point(key, 600000, 600000 * 0.95904 + 1000)     # delay on top of the ratio
+            self.assertEqual(rec['k'], 0.95904)
+            self.assertAlmostEqual(rec['b'], 1000, delta=1)
+            self.assertNotEqual(timing.video_key('The.Film.2021.1080p.WEB.mkv'),
+                                timing.video_key('The.Film.2021.720p.HDTV.mkv'))
+            self.assertEqual(timing.video_key('video.mkv', 'Film'), timing.video_key('stream', 'Film'))
+        finally:
+            shutil.rmtree(base, ignore_errors=True)
 
 if __name__ == '__main__':
     unittest.main()

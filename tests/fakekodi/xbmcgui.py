@@ -100,3 +100,25 @@ class DialogProgressBG(object):
 
     def isFinished(self):
         return False
+
+
+class ListItem(object):
+    def __init__(self, label='', label2='', path='', offscreen=False):
+        self._label, self._label2, self._path = label, label2, path
+        self.art = {}
+        self.props = {}
+
+    def getLabel(self):
+        return self._label
+
+    def getLabel2(self):
+        return self._label2
+
+    def setArt(self, art):
+        self.art.update(art)
+
+    def setProperty(self, key, value):
+        self.props[key] = value
+
+    def getProperty(self, key):
+        return self.props.get(key, '')

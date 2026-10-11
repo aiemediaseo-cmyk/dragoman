@@ -11,6 +11,8 @@ ready. Playback never pauses.
 - Subtitles already in your language, or in languages you choose to leave alone, are not translated.
 - Runs on any Kodi 19+ device: Android TV, phones, Windows, macOS, Linux, LibreELEC.
 - SRT and WebVTT subtitles. Finished translations are saved, so the same subtitle loads instantly next time.
+- Fixes subtitle timing too: a Sync assistant in Kodi's subtitle dialog (pick a line, press OK when you
+  hear it) and a check for subtitles made for another frame rate. Fixes are remembered.
 - You need your own free Gemini API key: [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
 
 ## Installation
@@ -32,6 +34,15 @@ Delete the paste afterwards; the key then exists only on your device.
 **Coming from AI Subtitle Translator** (Dragoman's earlier name)? Dragoman copies your key,
 languages and settings on its first start and offers to switch the old add-on off. Uninstall the
 old one afterwards.
+
+## Fixing the timing
+
+During playback open **Subtitles > Download > Dragoman** and choose **Sync assistant**. Pick a line
+you have not heard yet and press OK the moment you hear it: once fixes a delay; doing it again later
+in the film fixes a frame-rate drift too. Subtitles made for a different frame rate (they drift
+further off as the film goes on) are spotted, and Dragoman asks before fixing them
+(**Settings > Timing**). Fixes, **Undo** and "no" are remembered for that video and subtitle, also for
+its translations.
 
 ## Privacy
 

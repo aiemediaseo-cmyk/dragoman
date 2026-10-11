@@ -11,6 +11,10 @@ MODEL_CHOICES = [
     'gemini-3.8-flash',
 ]   # the settings enum has one more entry at the end: "Other (type the model id)"
 MODE_AUTO, MODE_ASK, MODE_OFF = 0, 1, 2
+TIMING_AUTO, TIMING_ASK, TIMING_OFF = 0, 1, 2   # frame-rate drift check
+# Sync assistant: taken off each press - the user's reaction and the OK dialog's closing
+# animation (Kodi returns from the dialog only after it, about 0.2 s in Estuary/Confluence)
+REACTION_MS = 450
 
 
 def kodi_setting(setting_id):
@@ -66,6 +70,8 @@ class Config(object):
         c.notify_skips = kodi.setting_bool('notify_skips', True)
         c.debug = kodi.setting_bool('debug_log', False)
         c.kodi_charset = '%s' % (kodi_setting('subtitles.charset') or '')
+        c.timing_check = kodi.setting_int('timing_check', TIMING_ASK, 0, 2)
+        c.reaction_ms = kodi.setting_int('reaction_ms', REACTION_MS, 0, 1500)
         return c
 
     def source_enabled(self, source):
@@ -81,9 +87,11 @@ class Config(object):
 
     def summary(self):
         return ('target=%s (%s) leave_alone=%s sources=%s mode=%s key: %s | models=%s fallback=%s '
-                'chunk=%d rpm=%d cache_days=%d progress=%s notify_skips=%s debug=%s charset=%s' % (
+                'chunk=%d rpm=%d cache_days=%d progress=%s notify_skips=%s debug=%s charset=%s '
+                'timing=%s reaction=%dms' % (
                     self.target, self.target_source, ','.join(self.leave_alone) or '-',
                     ','.join(s for s in ('manual', 'auto', 'local') if self.source_enabled(s)) or '-',
                     ('auto', 'ask', 'off')[self.mode], self.key_hint(), self.models[0], self.fallback,
                     self.chunk_size, self.rpm, self.cache_days, self.show_progress, self.notify_skips,
-                    self.debug, self.kodi_charset or '?'))
+                    self.debug, self.kodi_charset or '?', ('auto', 'ask', 'off')[self.timing_check],
+                    self.reaction_ms))

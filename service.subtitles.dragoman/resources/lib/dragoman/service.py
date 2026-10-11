@@ -14,13 +14,14 @@ watched folders is used, and the log says what the folders looked like.
 """
 import hashlib
 import os
+import random
 import shutil
 import threading
 import time
 
 import xbmc
 
-from . import envinfo, kodi, langdetect, languages, migrate, scanner, srt, util
+from . import envinfo, kodi, langdetect, languages, migrate, scanner, srt, sync, timing, util
 from .cache import Cache
 from .config import MODE_OFF, Config
 from .job import Candidate, TranslationJob, output_temp_dir
@@ -68,6 +69,7 @@ class Session(object):
         self.subdlg_open = False
         self.missing_ticks = 0
         self.meta = {}
+        self.token = ''               # names this playback for the Sync assistant / subtitle dialog
         self.stream_count = 0
         self.expect_until = None
         self.expect_mark = 0
@@ -128,12 +130,14 @@ class TranslatorService(object):
         self.lock = threading.RLock()
         self.session = None
         self.session_counter = 0
+        self.instance = '%08x' % random.getrandbits(32)
         self.job = None
         self.recent = {}
         self.last_candidate = None
         self.tick_no = 0
         self.last_scan_secs = 0.0
         self.old_addon_checked = False
+        self.last_ownload = sync.own_load_value()
         self.cfg = Config.load()
         self.log.debug_enabled = self.cfg.debug
         self.monitor = _Monitor(self)
@@ -175,6 +179,8 @@ class TranslatorService(object):
         profile = kodi.profile_dir()
         shutil.rmtree(output_temp_dir(), ignore_errors=True)       # translations of earlier sessions
         shutil.rmtree(os.path.join(profile, 'subtitles'), ignore_errors=True)
+        shutil.rmtree(os.path.join(profile, 'base'), ignore_errors=True)
+        _try(sync.prune_originals)
         if not migrate.old_addon_enabled():
             old_temp = migrate.old_temp_dir()
             if old_temp and os.path.isdir(old_temp):
@@ -214,6 +220,7 @@ class TranslatorService(object):
         if _try(home.getProperty, '', REQUEST_PROP) == 'translate_now':
             self.on_request()
         with self.lock:
+            self.poll_own_load()
             playing = _try(self.player.isPlayingVideo, False)
             s = self.session
             if s is None:
@@ -235,6 +242,19 @@ class TranslatorService(object):
                     self.safety_net(s)
             if self.log.debug_enabled and self.tick_no % HEARTBEAT_TICKS == 0:
                 self.log.debug('watching: ' + self.roots_summary(s))
+
+    def poll_own_load(self):
+        """The menu or the subtitle dialog loaded a re-timed subtitle: the stream Kodi
+        adds for it is ours, not a new subtitle to translate."""
+        value = sync.own_load_value()
+        if value and value != self.last_ownload:
+            self.last_ownload = value
+            s = self.session
+            if s is not None:
+                s.own_load_until = self.clock() + OWN_LOAD_QUIET
+                self.log.info('a re-timed subtitle was loaded by the Sync assistant / subtitle dialog')
+            return True
+        return False
 
     def poll_ui(self, s):
         open_now = kodi.cond(SUBDLG_COND)
@@ -261,6 +281,7 @@ class TranslatorService(object):
             s = self.session
             if s is None:
                 return
+            self.poll_own_load()
             streams = list(_try(self.player.getAvailableSubtitleStreams, []) or [])
             current = _try(self.player.getSubtitles, '')
             grew = len(streams) > s.stream_count
@@ -302,6 +323,8 @@ class TranslatorService(object):
         self.session_counter += 1
         playing_file = _try(self.player.getPlayingFile, '')
         s = Session(self.session_counter, self.clock(), playing_file)
+        s.token = '%s.%d' % (self.instance, s.id)
+        sync.set_session_token(s.token)
         self.session = s
         self.last_candidate = None
         self.recent.clear()
@@ -318,12 +341,12 @@ class TranslatorService(object):
             if root.last_error and root.last_error != 'missing':
                 self.log.warn('cannot read folder %s (%s): %s' % (root.label, root.local or root.path, root.last_error))
             self.log.debug('  %s' % root.describe())
-        if self.cfg.src_local:
-            self.check_local(s)
+        self.check_local(s)
 
     def end_session(self, reason):
         s = self.session
         self.session = None
+        sync.set_session_token('')
         job = self.job
         if job is not None and job.is_alive() and s is not None and job.cand.session_id == s.id:
             job.cancel('playback')
@@ -332,6 +355,12 @@ class TranslatorService(object):
     def is_current(self, session_id):
         with self.lock:
             return self.session is not None and self.session.id == session_id
+
+    def session_token(self, session_id):
+        """The token of the playback a job belongs to, or None when that playback is over."""
+        with self.lock:
+            s = self.session
+            return s.token if s is not None and s.id == session_id else None
 
     @staticmethod
     def read_cast(tag, limit=25):
@@ -357,7 +386,7 @@ class TranslatorService(object):
         return [p for p in people if p][:limit]
 
     def read_meta(self, playing_file):
-        meta = {'title': '', 'plot': '', 'stem': '', 'cast': []}
+        meta = {'title': '', 'plot': '', 'stem': '', 'cast': [], 'file': playing_file or ''}
         tag = _try(self.player.getVideoInfoTag)
         title = show = ''
         season = episode = -1
@@ -382,6 +411,8 @@ class TranslatorService(object):
         if not any(c.isalpha() for c in stem) and meta['title']:
             stem = meta['title']
         meta['stem'] = stem or meta['title'] or 'subtitle'
+        meta['file_name'] = name
+        meta['video_key'] = timing.video_key(name, meta['title'])
         return meta
 
     def build_roots(self, playing_file):
@@ -461,6 +492,8 @@ class TranslatorService(object):
 
     def safety_net(self, s):
         """Kodi added a subtitle stream but no new file was noticed: look again."""
+        if self.poll_own_load() or self.clock() < s.own_load_until:
+            return
         files, stats = scanner.snapshot(s.roots, self.skip_paths())
         now = time.time()
         recent = sorted((e for e in files.values()
@@ -493,17 +526,25 @@ class TranslatorService(object):
             self.log.info('  %s subtitles are not supported yet (SRT and WebVTT only)' % fmt.upper())
             return
         candidate = Candidate(entry, source, s.id)
+        raw = scanner.read_head(entry, 8 * 1024 * 1024)
+        if raw:
+            candidate.raw = raw
+            if sync.is_produced(hashlib.md5(raw).hexdigest()):
+                self.log.info('  this is the re-timed subtitle Dragoman just made - nothing to do')
+                return
         self.last_candidate = candidate
+        translate = True
         if not self.cfg.source_enabled(source):
             self.log.info('  not translating: %s subtitles are switched off in the settings' % source)
-            return
-        if self.cfg.mode == MODE_OFF:
+            translate = False
+        elif self.cfg.mode == MODE_OFF:
             self.log.info('  not translating: "Do nothing" is selected in the settings')
-            return
-        self.start_job(candidate)
+            translate = False
+        self.start_job(candidate, translate=translate)
 
     def check_local(self, s):
-        """At playback start: a subtitle next to a local video (Kodi loads it by itself)."""
+        """At playback start: a subtitle next to a local video (Kodi loads it by itself).
+        Translated when local subtitles are switched on; its timing is checked either way."""
         stem = util.file_name(s.file).rsplit('.', 1)[0].lower()
         if not stem:
             return
@@ -520,19 +561,28 @@ class TranslatorService(object):
             code, how = langdetect.classify(entry.name, text)
             detected.append((entry, code))
             self.log.info('local subtitle %s: %s (%s)' % (entry.name, code or '?', how))
-        if any(languages.matches(code, skip) for _e, code in detected):
-            self.log.info('a local subtitle is already in a left-alone language - nothing to do')
+        alone = [e for e, code in detected if languages.matches(code, skip)]
+        if alone:
+            self.log.info('a local subtitle is already in a left-alone language - not translating')
+            self.start_job(Candidate(alone[0], 'local', s.id), translate=False)
             return
         english = [e for e, code in detected if code == 'en']
         pick = english[0] if english else detected[0][0]
         candidate = Candidate(pick, 'local', s.id)
         self.last_candidate = candidate
-        if self.cfg.mode != MODE_OFF:
-            self.start_job(candidate)
+        translate = True
+        if not self.cfg.src_local:
+            self.log.info('  not translating: local subtitles are switched off in the settings')
+            translate = False
+        elif self.cfg.mode == MODE_OFF:
+            self.log.info('  not translating: "Do nothing" is selected in the settings')
+            translate = False
+        self.start_job(candidate, translate=translate)
 
     # ------------------------------------------------------------------ jobs
-    def start_job(self, candidate, forced=False):
-        raw = scanner.read_head(candidate.entry, 8 * 1024 * 1024)
+    def start_job(self, candidate, forced=False, translate=True):
+        raw = candidate.raw if (candidate.raw and not forced) else None
+        raw = raw or scanner.read_head(candidate.entry, 8 * 1024 * 1024)
         if raw:
             candidate.raw = raw      # keep it: a4k deletes its temp files soon after
         elif candidate.raw:
@@ -543,14 +593,20 @@ class TranslatorService(object):
         if not forced and md5:
             if (running is not None and running.md5 == md5 and not running.cancelled
                     and running.cand.session_id == candidate.session_id):
-                self.log.info('  same subtitle is already being translated')
+                self.log.info('  same subtitle is already being handled')
                 return
             seen = self.recent.get(md5)
             if seen is not None and now - seen < DUPLICATE_WINDOW:
                 self.log.info('  same subtitle was handled %.0fs ago' % (now - seen))
                 return
         if running is not None:
-            self.log.info('  a new subtitle arrived - cancelling the running translation')
+            if (not translate and not forced and running.translate and not running.cancelled
+                    and running.cand.session_id == candidate.session_id):
+                # translation is off for this one: it must not stop the translation in progress
+                self.log.info('  a translation is in progress - leaving this subtitle alone')
+                return
+            self.log.info('  a new subtitle arrived - cancelling the running %s' % (
+                'translation' if running.translate else 'timing check'))
             running.cancel()
         self.cfg = Config.load()
         self.log.debug_enabled = self.cfg.debug
@@ -558,7 +614,8 @@ class TranslatorService(object):
             self.recent[md5] = now
         s = self.session
         meta = dict(s.meta) if s is not None else {}
-        self.job = TranslationJob(self, candidate, self.cfg, meta, forced=forced, md5=md5)
+        self.job = TranslationJob(self, candidate, self.cfg, meta, forced=forced, md5=md5,
+                                  translate=translate or forced)
         self.job.start()
 
     def job_finished(self, job):

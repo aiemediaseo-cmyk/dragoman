@@ -1,4 +1,4 @@
-# Dragoman (service.subtitles.dragoman) v0.3.0 - test build
+# Dragoman (service.subtitles.dragoman) v0.4.0 - test build
 
 Your subtitle interpreter: translates subtitles into your language with Google
 Gemini while the video keeps playing. Works on any Kodi 19+ device, for streams
@@ -46,6 +46,34 @@ under a minute for a film). Playback never pauses.
 - Finished translations are saved, so picking the same subtitle again loads
   instantly without using your Gemini quota.
 
+## Fixing the timing
+Subtitles that come too early or too late - or drift further off as the film
+goes on - are fixed during playback:
+
+- **Sync assistant:** open **Subtitles > Download > Dragoman** (or the
+  Dragoman menu > Sync assistant). Pick a line you have not heard yet from the
+  list (the video pauses while you choose) and press OK the moment you hear it.
+  Once fixes a delay. If the subtitles drift off again later in the film, run
+  it once more there: two lines far apart fix a frame-rate drift too, and a cut
+  or an extra scene between them is noticed (the timing is then fixed from
+  there on).
+- **Frame-rate check:** a subtitle made for a 23.976 fps release played on a
+  25 fps video runs about 4 % too slow. Dragoman spots this when the dialogue
+  runs on past the end of the video and asks before fixing it (Settings >
+  Timing: fix automatically when sure / ask first / off). When it is not sure,
+  it only suggests the fix, which is then offered in Subtitles > Download >
+  Dragoman.
+- Fixes are remembered for that video and subtitle and applied again next
+  time, also to translations of it. **Undo the timing fix** (in the subtitle
+  dialog or the menu) shows the subtitle as it came, and that is remembered
+  too; so is a "no" to the frame-rate question.
+- Remote button: map a key to `RunScript(service.subtitles.dragoman,syncassistant)`
+  in a keymap to start the Sync assistant directly.
+- Applying a remembered or frame-rate fix by itself, Dragoman never switches
+  tracks or turns subtitles on: the re-timed copy only replaces the subtitle
+  Kodi is showing. Subtitles built into the video file are not touched (use
+  Kodi's own subtitle offset for those).
+
 ## Settings
 - **General:** target language (Auto = Kodi's subtitle language), languages to
   leave alone, which sources to translate (download dialog / automatic
@@ -56,6 +84,10 @@ under a minute for a film). Playback never pauses.
   the settings dialog can never undo it), model (default
   gemini-3.5-flash-lite), switch to another free model when the daily quota
   runs out.
+- **Timing:** Sync assistant and Undo (during playback), the frame-rate check
+  (fix automatically when sure / ask first / off), and the time taken off each
+  press in the Sync assistant (your reaction plus the dialog closing; raise it
+  if lines still come a little late after syncing).
 - **Advanced:** lines per request, requests per minute, how long to keep saved
   translations, progress bar, notices, detailed log, send log.
 
@@ -68,8 +100,9 @@ neither is the address it was imported from (only the site's name).
 ## Current limits (test build)
 SRT and WebVTT subtitles (ASS later). Files are recognised by their content, so
 subtitles saved without a .srt ending (a4kSubtitles sometimes does this) work
-too. No timing fixes yet (drift check and sync assistant come in the timing
-step). The whole file is translated before it is swapped in.
+too. The whole file is translated before it is swapped in. The frame-rate
+check only notices subtitles that run too slow (they end after the video); one
+that runs too fast is fixed with the Sync assistant.
 
 Log: `special://profile/addon_data/service.subtitles.dragoman/translator.log`,
 lines in kodi.log start with `[Dragoman]`.

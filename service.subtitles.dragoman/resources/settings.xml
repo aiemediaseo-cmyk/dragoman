@@ -21,6 +21,13 @@
         <setting id="custom_model" type="text" label="32126" default="" enable="eq(-1,6)"/>
         <setting id="fallback_models" type="bool" label="32127" default="true"/>
     </category>
+    <category label="32420">
+        <setting type="lsep" label="32426"/>
+        <setting type="action" label="32427" action="RunScript(service.subtitles.dragoman,syncassistant)" option="close"/>
+        <setting type="action" label="32428" action="RunScript(service.subtitles.dragoman,undotiming)" option="close"/>
+        <setting id="timing_check" type="enum" label="32421" lvalues="32422|32423|32424" default="1"/>
+        <setting id="reaction_ms" type="slider" label="32425" default="450" range="0,50,1000" option="int"/>
+    </category>
     <category label="32150">
         <setting id="chunk_size" type="slider" label="32151" default="100" range="20,10,200" option="int"/>
         <setting id="rpm" type="slider" label="32152" default="8" range="1,1,30" option="int"/>

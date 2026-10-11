@@ -94,6 +94,17 @@ def english_name(code):
     return row[1] if row else code
 
 
+_KODI_NAMES = {'sr-Cyrl': 'Serbian', 'zh': 'Chinese', 'zh-Hant': 'Chinese'}
+
+
+def kodi_name(code):
+    """English name Kodi turns back into the right language code (its subtitle dialog
+    names the file it is handed after it); '' when the language is unknown."""
+    if not code or code not in _BY_CODE:
+        return ''
+    return _KODI_NAMES.get(code) or english_name(code)
+
+
 def native_name(code):
     row = _BY_CODE.get(code)
     return row[2] if row else code

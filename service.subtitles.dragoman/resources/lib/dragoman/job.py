@@ -13,12 +13,15 @@ import xbmc
 import xbmcgui
 
 from . import cache as cache_mod
-from . import gemini, kodi, langdetect, languages, scanner, srt, translator
+from . import gemini, kodi, langdetect, languages, scanner, srt, sync, timing, translator
+from .config import TIMING_ASK, TIMING_AUTO, TIMING_OFF
 from .log import get_log
 
 MAX_FILE_BYTES = 8 * 1024 * 1024
 TEMP_OUT = 'special://temp/dragoman/'     # where Kodi reliably opens subtitles (like its own TempSubtitle)
 VERIFY_SECONDS = 5.0
+FACTS_TRIES = 7                           # video length / frame rate: up to 3 s to appear
+CONFIRM_MS = 20000                        # timing question: closes by itself after 20 s
 
 
 def output_temp_dir():
@@ -40,6 +43,11 @@ def safe_name(text, limit=60):
     return re.sub(r'\s+', ' ', text).strip()[:limit].strip()
 
 
+def srt_time(ms):
+    seconds = int((ms or 0) / 1000)
+    return '%d:%02d:%02d' % (seconds // 3600, seconds // 60 % 60, seconds % 60)
+
+
 def language_label(code):
     sid = languages.string_id(code)
     return kodi.text(sid) if sid else (code or kodi.text(32315))
@@ -58,7 +66,7 @@ class Candidate(object):
 
 
 class TranslationJob(threading.Thread):
-    def __init__(self, service, candidate, cfg, meta, forced=False, md5=None):
+    def __init__(self, service, candidate, cfg, meta, forced=False, md5=None, translate=True):
         threading.Thread.__init__(self, name='dragoman-job')
         self.daemon = True
         self.service = service
@@ -67,6 +75,12 @@ class TranslationJob(threading.Thread):
         self.meta = meta or {}
         self.forced = forced
         self.md5 = md5
+        self.translate = translate      # False: only timing (translation is off for this subtitle)
+        self.fix_key = None
+        self.fix_note = ''              # 'remembered' | 'framerate' when a timing fix applies
+        self.drift = None
+        self.baked = None               # fix already in the file (a re-timed copy Kodi kept)
+        self.kind = 'original'          # what the subtitle is: 'original' or 'translation'
         self.cancel_event = threading.Event()
         self.cancel_reason = ''
         self.log = get_log()
@@ -143,24 +157,54 @@ class TranslationJob(threading.Thread):
         target = cfg.target
         self.log.info('subtitle %s: %d cues, %s, language %s by %s; target %s' % (
             entry.name, len(cues), encoding, lang or '?', how, target))
-        if not self.forced and languages.matches(lang, cfg.skip_languages()):
+        origin = sync.origin_of(self.md5) if self.md5 else None
+        if origin is not None:
+            # Kodi's subtitle dialog keeps the re-timed file it was handed (next to the video,
+            # in place of the subtitle there): work with the subtitle it was made from
+            info, cues = origin
+            self.md5 = info.get('md5') or self.md5
+            self.baked = (float(info.get('k', 1.0)), float(info.get('b', 0.0)))
+            self.kind = info.get('kind') or 'original'
+            lang = info.get('lang') or lang
+            self.log.info('%s is a re-timed copy Dragoman made earlier (%s, %s) - using the %s it was made from' % (
+                entry.name, self.kind, timing.describe(*self.baked), 'translation' if self.kind == 'translation'
+                else 'subtitle'))
+        video = self.meta.get('video_key') or ''
+        self.fix_key = timing.fix_key(video, self.md5) if (video and self.md5) else None
+        left_alone = not self.forced and languages.matches(lang, cfg.skip_languages())
+        # nothing to translate and Kodi is not showing it: no questions about its timing
+        quiet = (left_alone or not self.translate) and not self._kodi_shows(lang)
+        fix = self._timing(cues, quiet)
+        if self.cancelled:
+            raise translator.Cancelled()
+        if left_alone:
             self.outcome = 'left_alone'
             self.log.info('left alone: %s is in %s' % (entry.name, lang))
-            if cfg.notify_skips:
+            if cfg.notify_skips and not fix and self.translate:
                 kodi.notify(kodi.text(32305, lang=language_label(lang)), 3000)
+            self._original(cues, lang, fix)
+            return
+        if not self.translate:
+            self.outcome = 'original'
+            self._original(cues, lang, fix)
             return
         if not cfg.api_key:
             self.outcome = 'no_key'
             self.log.warn('no Gemini API key set')
             kodi.notify(kodi.text(32306), 8000)
+            self._original(cues, lang, fix)
             return
         if not self.forced and cfg.mode == 1:
             if not self._ask(lang, target):
                 self.outcome = 'declined'
                 self.log.info('user declined the translation')
+                self._original(cues, lang, fix)
                 return
         if self.cancelled:
             raise translator.Cancelled()
+        # The original stays on screen while the translation is made: note it for the
+        # Sync assistant, and show it re-timed already when there is a fix.
+        self._original(cues, lang, fix)
 
         texts = [cue.text for cue in cues]
         store = cache_mod.Cache(os.path.join(kodi.profile_dir(), 'cache'))
@@ -176,8 +220,14 @@ class TranslationJob(threading.Thread):
                                             saved.get('characters'))
         if self.cancelled:
             raise translator.Cancelled()
-        content = srt.compose(cues, final)
-        result = self._deliver(content, target)
+        self.kind = 'translation'
+        self._publish('translation', srt.compose(cues, final), target)
+        fix = self._stored_fix()            # the Sync assistant may have been used meanwhile
+        result = self._deliver(timing.compose(cues, final, fix), target)
+        later = self._stored_fix()
+        if result == 'loaded' and not timing.same_fix(later, fix):
+            self.log.info('the timing was changed while the translation was loading - loading it again')
+            result = self._deliver(timing.compose(cues, final, later), target)
         if result == 'loaded':
             self.outcome = 'loaded'
             if from_cache:
@@ -267,19 +317,174 @@ class TranslationJob(threading.Thread):
                              'characters': engine.characters})
         return final, failed
 
-    def _file_name(self, target):
+    def _file_name(self, target, tag='AI'):
         base = safe_name(self.meta.get('title') or self.meta.get('stem') or '') or 'Subtitle'
-        return '%s AI.%s.srt' % (base, languages.file_code(target))
+        code = languages.file_code(target)
+        return '%s %s.%s.srt' % (base, tag, code) if code else '%s %s.srt' % (base, tag)
 
-    def _deliver(self, content, target):
-        """Write the translation and switch Kodi to it; check that Kodi really did.
+    # ------------------------------------------------------------------ timing
+    def _duration_ms(self):
+        try:
+            return int(float(xbmc.Player().getTotalTime()) * 1000)
+        except Exception:
+            return 0
+
+    def _video_facts(self):
+        """(length in ms, frame rate label). Right after playback starts Kodi may not know
+        them yet: wait a moment for them."""
+        duration, fps = 0, ''
+        for attempt in range(FACTS_TRIES):
+            duration = self._duration_ms()
+            fps = kodi.info('Player.Process(videofps)')
+            if duration > 0 and timing.norm_fps(fps):
+                break
+            if attempt < FACTS_TRIES - 1 and self._wait(0.5):
+                raise translator.Cancelled()
+        return duration, fps
+
+    def _stored_fix(self):
+        if not self.fix_key:
+            return None
+        return timing.FixStore(kodi.profile_dir()).mapping(self.fix_key)
+
+    def _timing(self, cues, quiet=False):
+        """The timing fix (k, b) to apply, or None: what is stored for this video and
+        subtitle first (a fix, or "leave it as it is"); else the frame-rate drift check
+        (fix / ask / suggest) - not when quiet (a subtitle Kodi is not showing)."""
+        cfg = self.cfg
+        if not self.fix_key:
+            return None
+        store = timing.FixStore(kodi.profile_dir())
+        rec = store.get(self.fix_key)
+        if rec:
+            fix = store.mapping(self.fix_key)
+            if fix:
+                self.fix_note = 'remembered'
+                self.log.info('timing fix from last time: %s (%s)' % (timing.describe(*fix), rec.get('how')))
+                return fix
+            self.log.info('timing: left as it is (%s before)' % {
+                'declined': 'you said no to a frame-rate fix', 'cleared': 'you undid the fix'}.get(
+                    rec.get('how'), 'checked with the Sync assistant'))
+            declined = rec.get('declined') if rec.get('how') in timing.INACTIVE else None
+            if declined:
+                # still offered in the subtitle dialog, should the user change their mind
+                src, dst = timing.fps_pair(float(declined))
+                self.drift = {'ratio': float(declined), 'from_fps': src, 'to_fps': dst, 'certain': False}
+            return None
+        if cfg.timing_check == TIMING_OFF:
+            return None
+        if quiet:
+            self.log.info('timing check skipped: Kodi is not showing this subtitle')
+            return None
+        duration, fps = self._duration_ms(), kodi.info('Player.Process(videofps)')
+        drift = timing.drift_check(cues, duration, fps, self.meta.get('file_name', ''), self.cand.name)
+        if duration <= 0 or (drift is not None and not timing.norm_fps(fps)):
+            # right after playback starts Kodi may not know the length / frame rate yet
+            duration, fps = self._video_facts()
+            drift = timing.drift_check(cues, duration, fps, self.meta.get('file_name', ''), self.cand.name)
+        if not drift:
+            self.log.info('timing check: nothing to fix (video %s, %s fps)' % (
+                srt_time(duration), fps or '?'))
+            return None
+        self.drift = drift
+        self.log.info('timing check (video %s, %s fps): %s -> ratio %s%s' % (
+            srt_time(duration), fps or '?', drift['reason'], drift['ratio'], ' (sure)' if drift['certain'] else ''))
+        if drift['ratio'] is None:
+            kodi.notify(kodi.text(32432), 8000)
+            return None
+        src, dst = timing.fps_label(drift['from_fps']), timing.fps_label(drift['to_fps'])
+        if not drift['certain']:
+            kodi.notify(kodi.text(32433, src=src), 8000)      # not sure: suggest, don't touch
+            return None
+        title = self.meta.get('title', '')
+        if cfg.timing_check == TIMING_ASK:
+            answer = self._confirm(kodi.text(32430, src=src, dst=dst))
+            if answer is None:
+                self.log.info('no answer to the timing question - it is asked again next time')
+                return None
+            if not answer:
+                store.decline(self.fix_key, drift['ratio'], title)
+                self.log.info('user kept the timing as it is (remembered for this video and subtitle)')
+                return None
+        new = store.set_ratio(self.fix_key, drift['ratio'], title)
+        self.fix_note = 'framerate'
+        return new['k'], new['b']
+
+    def _publish(self, kind, base_content, lang):
+        """Note what is showing, for the Sync assistant (menu and subtitle dialog)."""
+        token = self.service.session_token(self.cand.session_id)
+        if not token:
+            return
+        path = sync.write_base(base_content, self.md5, lang)
+        if not path:
+            return
+        drift = None
+        if self.drift and self.drift.get('ratio'):
+            drift = dict((k, self.drift.get(k)) for k in ('ratio', 'from_fps', 'to_fps', 'certain'))
+        sync.publish_current({
+            'file': self.meta.get('file', ''), 'video': self.meta.get('video_key', ''),
+            'md5': self.md5 or '', 'lang': lang or '', 'kind': kind, 'base': path, 'session': token,
+            'title': self.meta.get('title') or self.meta.get('stem') or '', 'drift': drift})
+
+    def _kodi_shows(self, lang):
+        """Is Kodi showing a subtitle in this language? A re-timed copy only replaces what is
+        on screen: loading a subtitle turns subtitles on, so it never happens when they are off."""
+        if not kodi.cond('VideoPlayer.SubtitlesEnabled'):
+            return False
+        try:
+            current = languages.normalize(xbmc.Player().getSubtitles() or '')
+        except Exception:
+            current = ''
+        want = languages.normalize(lang or '')
+        return not (current and want and languages.file_code(current) != languages.file_code(want)
+                    and not langdetect.same_group(current, want))
+
+    def _original(self, cues, lang, fix):
+        """The subtitle as it came is what is showing: note it, and when a timing fix
+        applies, show a re-timed copy instead (only if Kodi is showing it)."""
+        self._publish(self.kind, srt.compose(cues), lang)
+        if timing.same_fix(fix, self.baked):
+            return                          # the file on screen is timed like that already
+        if self.cancelled:
+            raise translator.Cancelled()
+        if not self._kodi_shows(lang):
+            self.log.info('timing fix not loaded: Kodi is not showing this subtitle (subtitles off '
+                          'or another track)')
+            return
+        content = timing.compose(cues, None, fix) if timing.is_change(fix) else srt.compose(cues)
+        tag = 'AI' if self.kind == 'translation' else 'synced'
+        result = self._deliver(content, lang, name=self._file_name(lang, tag=tag), show=False,
+                               what='the re-timed subtitle')
+        if result == 'loaded':
+            if not timing.is_change(fix):
+                self.log.info('the subtitle on screen had a timing fix that was undone - shown as it came')
+            elif self.fix_note == 'remembered':
+                kodi.notify(kodi.text(32434), 4000)
+            else:
+                kodi.notify(sync.fix_message(fix[0], fix[1], 'framerate'), 6000)
+
+    def _confirm(self, message):
+        """True (yes), False (no) or None (the question closed by itself unanswered: Kodi
+        reports that as "no", so it is told apart by the time it stayed open)."""
+        started = time.time()
+        try:
+            answer = bool(xbmcgui.Dialog().yesno(kodi.addon_name(), message, autoclose=CONFIRM_MS))
+        except TypeError:
+            answer = bool(xbmcgui.Dialog().yesno(kodi.addon_name(), message))
+        if not answer and (time.time() - started) * 1000 >= CONFIRM_MS - 1000:
+            return None
+        return answer
+
+    def _deliver(self, content, target, name=None, show=True, what='the translation'):
+        """Write the translation (or re-timed copy) and switch Kodi to it; check that Kodi
+        really did.
 
         First try: a fresh folder in Kodi's temp folder (the same place Kodi keeps
         the subtitles it downloads itself). Second try: a fresh folder in the
         add-on's profile folder. Returns 'loaded', 'rejected' or 'not_current'.
         """
-        name = self._file_name(target)
-        job_id = '%s-%d' % ((self.md5 or 'job')[:8], int(time.time()))
+        name = name or self._file_name(target)
+        job_id = '%s-%d' % ((self.md5 or 'job')[:8], int(time.time() * 1000) % 10 ** 9)
         folders = [os.path.join(output_temp_dir(), job_id),
                    os.path.join(kodi.profile_dir(), 'subtitles', job_id)]
         data = b'\xef\xbb\xbf' + content.encode('utf-8')
@@ -295,24 +500,26 @@ class TranslationJob(threading.Thread):
                 continue
             self.result_path = path
             self.log.info('wrote %s (%d bytes)' % (path, len(data)))
-            result = self._load(path, target)
+            result = self._load(path, target, show, what)
             if result != 'rejected':
                 return result
-            self.log.warn('Kodi did not switch to the translation (attempt %d of %d)' % (attempt, len(folders)))
+            self.log.warn('Kodi did not switch to %s (attempt %d of %d)' % (what, attempt, len(folders)))
         return 'rejected'
 
-    def _load(self, path, target):
+    def _load(self, path, target, show=True, what='the translation'):
         if not self.service.is_current(self.cand.session_id):
-            self.log.info('playback changed - translation saved but not loaded')
+            self.log.info('playback changed - subtitle saved but not loaded')
             return 'not_current'
+        before = sync.subtitle_snapshot()
         try:
             self.service.note_own_load(self.cand.session_id)
             player = xbmc.Player()
             player.setSubtitles(path)
-            try:
-                player.showSubtitles(True)
-            except Exception:
-                pass
+            if show:
+                try:
+                    player.showSubtitles(True)
+                except Exception:
+                    pass
         except Exception as exc:
             self.log.error('could not load the subtitle: %s' % exc)
             return 'rejected'
@@ -325,14 +532,18 @@ class TranslationJob(threading.Thread):
             if self._wait(0.5):
                 raise translator.Cancelled()
             waited += 0.5
-            try:
-                current = xbmc.Player().getSubtitles() or ''
-            except Exception:
-                current = ''
-            if languages.normalize(current) == want or current.lower() == want:
-                self.log.info('Kodi switched to the translation (subtitle language %r)' % current)
+            if sync.switched(before, want):
+                try:
+                    current = xbmc.Player().getSubtitles() or ''
+                except Exception:
+                    current = ''
+                self.log.info('Kodi switched to %s (subtitle language %r)' % (what, current))
                 return 'loaded'
-        self.log.warn('Kodi is still on subtitle %r after %.0fs, not on the translation' % (current, waited))
+        try:
+            current = xbmc.Player().getSubtitles() or ''
+        except Exception:
+            current = ''
+        self.log.warn('Kodi is still on subtitle %r after %.0fs, not on %s' % (current, waited, what))
         return 'rejected'
 
     # ------------------------------------------------------------------ progress

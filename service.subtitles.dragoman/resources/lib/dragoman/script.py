@@ -3,7 +3,10 @@
 
 RunScript(service.subtitles.dragoman[,action]) with action one of:
 translate, enterkey, importurl, importkey, testkey, removekey, leavealone, clearcache, sendlog,
+syncassistant, undotiming, fixframerate (timing of the subtitle that is showing; during playback),
 oldaddon (asked by the service when the earlier version of the add-on is still switched on)
+
+A remote button can be mapped to RunScript(service.subtitles.dragoman,syncassistant).
 
 The API key and the languages to leave alone are saved in state.json (see
 state.py), never in settings.xml, so the settings dialog cannot undo them.
@@ -17,7 +20,7 @@ import xbmcgui
 import xbmcvfs
 
 from . import cache as cache_mod
-from . import diag, gemini, keysource, kodi, languages, migrate, state, translator
+from . import diag, gemini, keysource, kodi, languages, migrate, state, sync, translator
 from .config import Config
 from .log import get_log
 
@@ -29,7 +32,8 @@ def run(argv):
     handlers = {'translate': translate_now, 'enterkey': enter_key, 'importurl': import_key_url,
                 'importkey': import_key, 'testkey': test_key, 'removekey': remove_key,
                 'leavealone': choose_leave_alone, 'clearcache': clear_cache, 'sendlog': send_log,
-                'oldaddon': migrate.offer_to_disable_old}
+                'oldaddon': migrate.offer_to_disable_old, 'syncassistant': sync.run_assistant_from_menu,
+                'undotiming': sync.undo_from_menu, 'fixframerate': sync.framerate_from_menu}
     try:
         handlers.get(action, main_menu)()
     except Exception:
@@ -51,7 +55,8 @@ def main_menu():
     cfg = Config.load()
     if not cfg.api_key and not cfg.setup_done:
         first_run()
-    entries = [(32202, translate_now), (32203, enter_key), (32273, import_key_url), (32204, import_key),
+    entries = [(32202, translate_now), (32427, sync.run_assistant_from_menu), (32428, sync.undo_from_menu),
+               (32203, enter_key), (32273, import_key_url), (32204, import_key),
                (32205, test_key), (32206, choose_leave_alone), (32207, clear_cache), (32208, view_log),
                (32209, send_log), (32236, remove_key), (32210, open_settings)]
     while True:

@@ -150,6 +150,17 @@ def jsonrpc(method, params=None):
     return response.get('result'), None
 
 
+def subtitle_state():
+    """(number of subtitle tracks, index of the current one or None) of the video player,
+    or None when Kodi does not say (JSON-RPC: the video player is always player 1)."""
+    result, err = jsonrpc('Player.GetProperties', {'playerid': 1, 'properties': ['subtitles', 'currentsubtitle']})
+    if err or not isinstance(result, dict) or not isinstance(result.get('subtitles'), list):
+        return None
+    current = result.get('currentsubtitle')
+    index = current.get('index') if isinstance(current, dict) else None
+    return len(result['subtitles']), (index if isinstance(index, int) else None)
+
+
 def build_version():
     return info('System.BuildVersion')
 

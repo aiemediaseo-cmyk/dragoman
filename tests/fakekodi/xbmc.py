@@ -22,6 +22,10 @@ def getInfoLabel(label):
 
 
 def getCondVisibility(expression):
+    if expression == 'Player.Paused':
+        return STATE.playing and STATE.paused
+    if expression == 'VideoPlayer.SubtitlesEnabled' and expression not in STATE.conds:
+        return STATE.playing and STATE.subs_visible
     return STATE.conds.get(expression, False)
 
 
@@ -37,9 +41,22 @@ def getSkinDir():
     return 'skin.estuary'
 
 
+def _player_properties(params):
+    """Player.GetProperties for the video player (subtitle tracks only)."""
+    if not STATE.playing or params.get('playerid') != 1:
+        return {'__error__': {'code': -32100, 'message': 'Failed to execute method.'}}
+    tracks = [{'index': n, 'language': name, 'name': name} for n, name in enumerate(STATE.subs)]
+    cur = STATE.cur_index
+    current = tracks[cur] if cur is not None and 0 <= cur < len(tracks) else None
+    return {'subtitles': tracks, 'currentsubtitle': current, 'subtitleenabled': STATE.subs_visible}
+
+
+_BUILTIN_JSONRPC = {'Player.GetProperties': _player_properties}
+
+
 def executeJSONRPC(request):
     req = json.loads(request)
-    handler = STATE.jsonrpc.get(req['method'])
+    handler = STATE.jsonrpc.get(req['method'], _BUILTIN_JSONRPC.get(req['method']))
     if handler is None:
         return json.dumps({'id': 1, 'jsonrpc': '2.0',
                            'error': {'code': -32601, 'message': 'Method not found.'}})
@@ -154,13 +171,23 @@ class Player(object):
         track - unless the test says Kodi cannot open this path (then it stays on
         the previous track, as after 'Unable to create subtitle parser')."""
         STATE.loaded_subs.append(path)
+        code = path.rsplit('.', 2)[-2] if path.count('.') >= 2 else ''
+        lang = {'sl': 'slv', 'bs': 'bos', 'de': 'ger', 'hr': 'hrv', 'sr': 'srp', 'en': 'eng'}.get(code, code)
+        STATE.subs.append(lang)                 # Kodi lists the new track either way
         if STATE.reject_subs is not None and STATE.reject_subs(path):
             return
-        code = path.rsplit('.', 2)[-2] if path.count('.') >= 2 else ''
-        STATE.cur_sub = {'sl': 'slv', 'bs': 'bos', 'de': 'ger', 'hr': 'hrv', 'sr': 'srp', 'en': 'eng'}.get(code, code)
+        STATE.cur_sub = lang
+        STATE.cur_index = len(STATE.subs) - 1
+        STATE.subs_visible = True               # like Kodi: adding a subtitle file shows subtitles
 
     def showSubtitles(self, visible):
+        STATE.show_calls.append(visible)
         STATE.subs_visible = visible
+
+    def pause(self):
+        """Like Kodi's Player.pause(): toggles."""
+        self._need()
+        STATE.paused = not STATE.paused
 
 
 class Monitor(object):

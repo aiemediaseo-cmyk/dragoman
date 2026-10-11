@@ -26,6 +26,9 @@ class _State(object):
         self.total = 0.0
         self.cur_sub = ''
         self.subs = []
+        self.cur_index = None       # current subtitle track (JSON-RPC currentsubtitle)
+        self.subs_visible = True    # VideoPlayer.SubtitlesEnabled
+        self.show_calls = []        # showSubtitles(...) calls
         self.meta = {}
         self.players = []
         self.monitors = []
@@ -44,6 +47,9 @@ class _State(object):
         self.reject_subs = None
         self.builtins = []
         self.progress_bg = []
+        self.paused = False
+        self.plugin_items = []       # (handle, url, ListItem) from xbmcplugin.addDirectoryItem
+        self.plugin_ended = []
 
     # --------------------------------------------------------------- paths
     def translate(self, path):
@@ -77,7 +83,7 @@ class _State(object):
     def on_wait(self, timeout):
         self.ticks += 1
         self.now += timeout
-        if self.playing:
+        if self.playing and not self.paused:
             self.time += timeout
         action = self.actions.get(self.ticks)
         if action is not None:

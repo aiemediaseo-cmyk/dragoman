@@ -438,6 +438,124 @@ msgctxt "#32291"
 msgid "Several API keys found - which one?"
 msgstr ""
 
+# Timing
+
+msgctxt "#32420"
+msgid "Timing"
+msgstr ""
+
+msgctxt "#32421"
+msgid "Frame-rate drift check (subtitles that drift further off during the film)"
+msgstr ""
+
+msgctxt "#32422"
+msgid "Fix automatically when sure"
+msgstr ""
+
+msgctxt "#32423"
+msgid "Ask first"
+msgstr ""
+
+msgctxt "#32424"
+msgid "Off"
+msgstr ""
+
+msgctxt "#32425"
+msgid "Sync assistant press delay (your reaction + the dialog closing, in ms)"
+msgstr ""
+
+msgctxt "#32426"
+msgid "During playback: Subtitles > Download > Dragoman"
+msgstr ""
+
+msgctxt "#32427"
+msgid "Sync assistant (during playback)"
+msgstr ""
+
+msgctxt "#32428"
+msgid "Undo the timing fix (during playback)"
+msgstr ""
+
+msgctxt "#32430"
+msgid "This subtitle seems timed for a {src} fps version of the video (this one runs at {dst} fps), so it drifts further off as the film goes on. Fix the timing?[CR][CR]Not sure (a recap or a scene this video lacks looks the same)? Choose No - the fix stays on offer in Subtitles > Download > Dragoman, next to the Sync assistant."
+msgstr ""
+
+msgctxt "#32432"
+msgid "Subtitle seems out of sync - fix it with the Sync assistant: Subtitles > Download > Dragoman"
+msgstr ""
+
+msgctxt "#32433"
+msgid "This subtitle may be timed for a {src} fps version - to fix it: Subtitles > Download > Dragoman"
+msgstr ""
+
+msgctxt "#32434"
+msgid "Timing fix from last time applied"
+msgstr ""
+
+msgctxt "#32440"
+msgid "Sync assistant: pick a line you have not heard yet"
+msgstr ""
+
+msgctxt "#32441"
+msgid "The Sync assistant fixes the subtitle Dragoman handled for this video. Play the video and pick a subtitle first (subtitles built into the video file cannot be fixed here - use Kodi's own subtitle offset for those)."
+msgstr ""
+
+msgctxt "#32442"
+msgid "Kodi is showing a {now} subtitle, but Dragoman has the {lang} one. Fix the {lang} subtitle?"
+msgstr ""
+
+msgctxt "#32443"
+msgid "Press OK the moment you hear:[CR][CR][B]{line}[/B][CR][CR]Back cancels."
+msgstr ""
+
+msgctxt "#32444"
+msgid "Subtitles now come {s} s later"
+msgstr ""
+
+msgctxt "#32445"
+msgid "Subtitles now come {s} s earlier"
+msgstr ""
+
+msgctxt "#32446"
+msgid "Timing fixed: subtitle made for {src} fps, the video runs at {dst} fps"
+msgstr ""
+
+msgctxt "#32447"
+msgid "Timing checked - no change needed"
+msgstr ""
+
+msgctxt "#32448"
+msgid "Timing fix removed"
+msgstr ""
+
+msgctxt "#32449"
+msgid "If the subtitles drift off again later in the film, run the Sync assistant once more there"
+msgstr ""
+
+msgctxt "#32450"
+msgid "The timing changes between scenes - fixed from here on"
+msgstr ""
+
+msgctxt "#32451"
+msgid "There is no timing fix to undo"
+msgstr ""
+
+msgctxt "#32452"
+msgid "Dragoman has no frame-rate suggestion for this subtitle. Use the Sync assistant instead."
+msgstr ""
+
+msgctxt "#32453"
+msgid "Sync assistant - press OK when you hear a line"
+msgstr ""
+
+msgctxt "#32454"
+msgid "Fix frame rate: made for {src} fps, video runs at {dst} fps"
+msgstr ""
+
+msgctxt "#32455"
+msgid "Undo the timing fix"
+msgstr ""
+
 # Notifications
 
 msgctxt "#32300"

@@ -20,7 +20,8 @@ sys.path.insert(0, ADDON)
 sys.path.insert(0, HERE)
 
 from kodistate import STATE  # noqa: E402
-from test_core import EN, SL, SR, SR_CYR, make_srt  # noqa: E402
+from test_core import EN, HR, SL, SR, SR_CYR, episode_cues, make_srt  # noqa: E402
+from test_core import srt as core_srt  # noqa: E402
 
 # Fake keys are built from two parts so secret scanners do not mistake them for real ones.
 G = 'AI' + 'za'
@@ -867,6 +868,457 @@ class MigrationTests(Base):
         self.assertEqual(len([c for c in STATE.dialog_calls if c[0] == 'yesnocustom']), 3)
         self.assertTrue(self.load_state()['old_addon_declined'])
         self.assertEqual(STATE.jsonrpc.get('Addons.SetAddonEnabled'), None)
+
+
+
+EPISODE = 'https://cdn.example.net/d/TOKEN9/Show.S01E01.720p.HDTV.x264-GRP.mkv'
+HR_LINES = [l.strip() + '.' for l in HR.split('.') if l.strip()]
+
+
+def croatian_episode(**kw):
+    cues = episode_cues(**kw)
+    texts = [HR_LINES[n % len(HR_LINES)] for n in range(len(cues))]
+    return core_srt.compose(cues, texts)
+
+
+class TimingScenarios(Base):
+    def play_episode(self, fps='25.000', total=2520.0):
+        STATE.playing = True
+        STATE.file = EPISODE
+        STATE.total = total
+        STATE.labels['Player.Process(videofps)'] = fps
+        STATE.meta = {'title': 'Pilot', 'show': 'Show', 'season': 1, 'episode': 1, 'plot': 'A start.'}
+        self.player().onAVStarted()
+
+    def pick_text(self, name, content):
+        write(os.path.join(self.temp, name), content.encode('utf-8'))
+        STATE.conds['Window.IsActive(subtitlesearch)'] = False
+        self.player().onAVChange()
+
+    def store(self):
+        from resources.lib.dragoman import kodi, timing
+        return timing.FixStore(kodi.profile_dir())
+
+    def loaded_text(self, index=-1):
+        with io.open(STATE.loaded_subs[index], encoding='utf-8-sig') as handle:
+            return handle.read()
+
+    def again(self):
+        """Ready for another service run (the one before ended with Kodi "shutting down")."""
+        STATE.ticks = 0
+        STATE.abort = False
+        STATE.actions = {}
+        STATE.loaded_subs = []
+        STATE.dialog_calls = []
+
+    def offered(self, handle='7'):
+        from resources.lib.dragoman import submodule
+        STATE.plugin_items = []
+        submodule.run(['plugin://service.subtitles.dragoman/', handle, '?action=search&languages=English'])
+        return [(li.getLabel(), li.getLabel2(), url.split('id=')[1]) for _h, url, li in STATE.plugin_items]
+
+    def download(self, item_id, handle='8'):
+        from resources.lib.dragoman import submodule
+        STATE.plugin_items = []
+        submodule.run(['plugin://service.subtitles.dragoman/', handle, '?action=download&id=' + item_id])
+        paths = [url for _h, url, _li in STATE.plugin_items]
+        return paths[0] if paths else ''
+
+    def hear_at(self, seconds, also=None):
+        """Stand-in for the "Press OK the moment you hear" dialog: the user presses at `seconds`."""
+        import xbmcgui
+        original = xbmcgui.Dialog.ok
+
+        def heard(dialog, heading, message):
+            STATE.dialog_calls.append(('ok', message))
+            self.assertFalse(STATE.paused)            # the video plays while the user listens
+            if also is not None:
+                also()
+            STATE.time = seconds
+            return True
+        xbmcgui.Dialog.ok = heard
+        return original
+
+    def pick_english(self):
+        """The user picks the English subtitle in Kodi's dialog: Kodi adds it and shows it."""
+        STATE.subs.append('eng')
+        STATE.cur_sub, STATE.cur_index, STATE.subs_visible = 'eng', len(STATE.subs) - 1, True
+        self.pick('TempSubtitle.en.srt', EN)
+
+    def episode_run(self, content, extra=None):
+        actions = {2: self.play_episode, 4: self.open_dialog,
+                   6: lambda: self.pick_text('TempSubtitle.hr.srt', content), 7: self.join_job,
+                   10: lambda: setattr(STATE, 'abort', True)}
+        actions.update(extra or {})
+        self.run_service(actions)
+
+    # ------------------------------------------------------------------ frame-rate drift
+    def test_frame_rate_drift_fixed_automatically(self):
+        STATE.settings['timing_check'] = '0'
+        self.episode_run(croatian_episode(scale=25 / 23.976))     # made for the 23.976 fps release
+        log = self.log()
+        self.assertIn('left alone: TempSubtitle.hr.srt is in hr', log)
+        self.assertIn('ratio 0.95904 (sure)', log)
+        self.assertEqual([c for c in STATE.dialog_calls if c[0] == 'yesno'], [])
+        self.assertEqual(len(STATE.loaded_subs), 1)
+        self.assertTrue(STATE.loaded_subs[0].endswith('Show S01E01 - Pilot synced.hr.srt'), STATE.loaded_subs)
+        self.assertIn('Timing fixed: subtitle made for 23.976 fps, the video runs at 25 fps', self.toasts())
+        self.assertNotIn('Subtitle is in Croatian - left as it is', self.toasts())
+        self.assertEqual(STATE.show_calls, [])                  # subtitles were on: nothing forced
+        fixed = core_srt.parse(self.loaded_text())
+        self.assertLess(fixed[-1].end, 2520 * 1000)
+        self.assertEqual(fixed[0].start, 3000)                # the start hardly moves ...
+        self.assertAlmostEqual(fixed[100].start, 603000, delta=2)   # ... and line 101 is back at 10:03
+        from resources.lib.dragoman import sync
+        rec = sync.load_current()
+        self.assertEqual((rec['kind'], rec['lang']), ('original', 'hr'))
+        self.assertEqual(self.fake.generate_calls(), [])
+
+    def test_frame_rate_drift_asks_first_by_default(self):
+        STATE.yesno_answers = [True]
+        self.episode_run(croatian_episode(scale=25 / 23.976))
+        asks = [c[1] for c in STATE.dialog_calls if c[0] == 'yesno']
+        self.assertEqual(len(asks), 1)
+        self.assertTrue(asks[0].startswith('This subtitle seems timed for a 23.976 fps version of the video '
+                                           '(this one runs at 25 fps)'), asks)
+        self.assertTrue(STATE.loaded_subs[0].endswith('synced.hr.srt'))
+        self.assertIn('Timing fixed: subtitle made for 23.976 fps, the video runs at 25 fps', self.toasts())
+
+    def test_no_to_the_frame_rate_fix_is_remembered(self):
+        STATE.yesno_answers = [False]
+        content = croatian_episode(scale=25 / 23.976)
+        self.episode_run(content)
+        self.assertEqual(STATE.loaded_subs, [])
+        self.assertIn('user kept the timing as it is (remembered for this video and subtitle)', self.log())
+        (rec,) = self.store()._load().values()
+        self.assertEqual((rec['how'], rec['declined']), ('declined', 0.95904))
+        # next time: not asked again, nothing loaded - but still on offer in the subtitle dialog
+        self.again()
+        self.episode_run(content)
+        self.assertEqual([c for c in STATE.dialog_calls if c[0] == 'yesno'], [])
+        self.assertEqual(STATE.loaded_subs, [])
+        self.assertIn('timing: left as it is (you said no to a frame-rate fix before)', self.log())
+        self.assertEqual([o[2] for o in self.offered()], ['sync', 'framerate'])
+        path = self.download('framerate')
+        self.assertTrue(path.endswith('synced.hr.srt'))
+        self.assertEqual(self.store().mapping(list(self.store()._load())[0]), (0.95904, 0.0))
+
+    def test_an_unanswered_timing_question_is_asked_again(self):
+        from resources.lib.dragoman import job
+        job.CONFIRM_MS = 1000             # in this test the question closes by itself at once
+        STATE.yesno_answers = [False]     # ... which Kodi reports as "no"
+        content = croatian_episode(scale=25 / 23.976)
+        self.episode_run(content)
+        self.assertIn('no answer to the timing question - it is asked again next time', self.log())
+        self.assertEqual(self.store()._load(), {})
+        self.again()
+        job.CONFIRM_MS = 20000
+        STATE.yesno_answers = [True]
+        self.episode_run(content)
+        self.assertEqual(len([c for c in STATE.dialog_calls if c[0] == 'yesno']), 1)
+        self.assertTrue(STATE.loaded_subs[0].endswith('synced.hr.srt'))
+
+    def test_a_delay_is_left_to_the_sync_assistant(self):
+        self.episode_run(croatian_episode(shift_s=150))       # 2.5 minutes late: delay or drift?
+        self.assertEqual(STATE.loaded_subs, [])
+        self.assertIn('a plain delay could explain it as well', self.log())
+        self.assertIn('Subtitle seems out of sync - fix it with the Sync assistant: '
+                      'Subtitles > Download > Dragoman', self.toasts())
+        self.assertEqual(self.offered(), [('Croatian', 'Sync assistant - press OK when you hear a line', 'sync')])
+
+    def test_unknown_frame_rate_is_only_suggested_and_offered_in_the_subtitle_dialog(self):
+        self.run_service({2: lambda: self.play_episode(fps=''), 4: self.open_dialog,
+                          6: lambda: self.pick_text('TempSubtitle.hr.srt', croatian_episode(scale=25 / 23.976)),
+                          7: self.join_job, 10: lambda: setattr(STATE, 'abort', True)})
+        self.assertEqual(STATE.loaded_subs, [])
+        self.assertIn("not sure: Kodi does not report the video's frame rate", self.log())
+        self.assertIn('This subtitle may be timed for a 23.976 fps version - to fix it: '
+                      'Subtitles > Download > Dragoman', self.toasts())
+        offered = self.offered()
+        self.assertEqual([o[0] for o in offered], ['Croatian', 'Croatian'])
+        self.assertEqual(offered[1][1:], ('Fix frame rate: made for 23.976 fps, video runs at 25 fps', 'framerate'))
+        path = self.download('framerate')
+        self.assertTrue(path.endswith('Show S01E01 - Pilot synced.hr.srt'))
+        self.assertEqual(self.store().get(list(self.store()._load())[0])['ratio'], 0.95904)
+        self.assertIn('Timing fixed: subtitle made for 23.976 fps, the video runs at 25 fps', self.toasts())
+
+    # ------------------------------------------------------------------ Sync assistant
+    def test_sync_assistant_menu_then_remembered_then_subtitle_dialog(self):
+        from resources.lib.dragoman import script, sync
+        import xbmcgui
+        # 1) English picked and translated (fake Gemini answers "[sl] ...")
+        self.run_service({2: self.start_play, 4: self.open_dialog,
+                          6: self.pick_english, 7: self.join_job,
+                          10: lambda: setattr(STATE, 'abort', True)})
+        self.assertEqual(sync.load_current()['kind'], 'translation')
+        first_translation = len(self.fake.generate_calls())
+
+        # 2) Sync assistant from the menu: the user picks line 11 (shown at 0:10) and hears it
+        #    2.4 s later; with the default 0.45 s press delay the press comes at 12.85 s.
+        original_ok = self.hear_at(12.85)
+        try:
+            STATE.abort = False
+            STATE.actions = {}
+            STATE.time = 2.0
+            STATE.select_answers = [10]
+            script.run(['default.py', 'syncassistant'])
+        finally:
+            xbmcgui.Dialog.ok = original_ok
+        lists = [c for c in STATE.dialog_calls if c[0] == 'select']
+        self.assertEqual(lists[-1][1], 'Sync assistant: pick a line you have not heard yet')
+        self.assertTrue(lists[-1][2][10].startswith('+0:08   [sl]'), lists[-1][2][10])
+        self.assertFalse(STATE.paused)
+        key, rec = list(self.store()._load().items())[0]
+        self.assertEqual((rec['k'], round(rec['b']), rec['how']), (1.0, 2400, 'offset'))
+        self.assertTrue(STATE.loaded_subs[-1].endswith('The Film (2021) AI.sl.srt'))
+        self.assertIn('00:00:12,400 --> 00:00:13,300\n[sl]', self.loaded_text())
+        self.assertIn('Subtitles now come 2.4 s later', self.toasts())
+        self.assertTrue(STATE.window_props.get(10000, {}).get('dragoman.ownload'))
+
+        # 3) Next time: the same English subtitle -> the fix is applied again, translation from cache
+        self.again()
+        self.run_service({2: self.start_play, 4: self.open_dialog,
+                          6: self.pick_english, 7: self.join_job,
+                          10: lambda: setattr(STATE, 'abort', True)})
+        self.assertEqual(len(self.fake.generate_calls()), first_translation)
+        self.assertIn('timing fix from last time: k=1.000000 b=+2.40s (offset)', self.log())
+        self.assertTrue(STATE.loaded_subs[0].endswith('The Film (2021) synced.en.srt'))
+        self.assertTrue(STATE.loaded_subs[-1].endswith('The Film (2021) AI.sl.srt'))
+        self.assertIn('00:00:12,400 --> 00:00:13,300\n[sl]', self.loaded_text())
+        self.assertIn('Timing fix from last time applied', self.toasts())
+
+        # 4) Kodi's subtitle dialog: Sync assistant + Undo are offered for the Slovenian translation
+        self.assertEqual(self.offered(), [('Slovenian', 'Sync assistant - press OK when you hear a line', 'sync'),
+                                          ('Slovenian', 'Undo the timing fix', 'undo')])
+        path = self.download('undo')
+        self.assertEqual(self.store().get(key)['how'], 'cleared')
+        self.assertIsNone(self.store().mapping(key))
+        with io.open(path, encoding='utf-8-sig') as handle:
+            self.assertIn('00:00:10,000 --> 00:00:10,900\n[sl]', handle.read())
+        self.assertIn('Timing fix removed', self.toasts())
+
+        # 5) Kodi copies the file it was handed into its temp folder: not a new subtitle for us
+        with open(path, 'rb') as handle:
+            handed_over = handle.read()      # Kodi copies it at once (before any restart)
+        self.again()
+        calls = len(self.fake.generate_calls())
+        self.run_service({2: self.start_play, 4: self.open_dialog,
+                          6: lambda: write(os.path.join(self.temp, 'TempSubtitle.sl.srt'), handed_over),
+                          7: lambda: self.player().onAVChange(),
+                          12: lambda: setattr(STATE, 'abort', True)})
+        self.assertIn('this is the re-timed subtitle Dragoman just made - nothing to do', self.log())
+        self.assertEqual(len(self.fake.generate_calls()), calls)
+
+        # 6) The undo is remembered: next time the English subtitle is shown as it is
+        self.again()
+        self.run_service({2: self.start_play, 4: self.open_dialog,
+                          6: self.pick_english, 7: self.join_job,
+                          10: lambda: setattr(STATE, 'abort', True)})
+        self.assertIn('timing: left as it is (you undid the fix before)', self.log())
+        self.assertEqual(len(STATE.loaded_subs), 1)
+        self.assertIn('00:00:10,000 --> 00:00:10,900\n[sl]', self.loaded_text())
+
+    def test_translation_that_arrives_during_the_sync_assistant_is_the_one_re_timed(self):
+        from resources.lib.dragoman import script
+        import xbmcgui
+        self.fake.delay = 1.0
+        box = {}
+
+        def assistant():
+            STATE.time = 2.0
+            STATE.select_answers = [10]
+            box['ok'] = self.hear_at(12.85, also=lambda: self._svc.job.join(15))   # the translation lands
+            try:
+                script.run(['default.py', 'syncassistant'])
+            finally:
+                xbmcgui.Dialog.ok = box['ok']
+
+        self.run_service({2: self.start_play, 4: self.open_dialog,
+                          6: lambda: self.pick('TempSubtitle.en.srt', EN),
+                          7: lambda: time.sleep(1.2),          # the English original is noted by now
+                          8: assistant,
+                          30: lambda: setattr(STATE, 'abort', True)})
+        log = self.log()
+        self.assertIn('sync assistant: the translation subtitle arrived meanwhile - re-timing that one', log)
+        self.assertTrue(STATE.loaded_subs[-1].endswith('The Film (2021) AI.sl.srt'), STATE.loaded_subs)
+        self.assertIn('00:00:12,400 --> 00:00:13,300\n[sl]', self.loaded_text())
+        self.assertIn('Subtitles now come 2.4 s later', self.toasts())
+
+    def test_sync_assistant_without_a_subtitle_explains(self):
+        from resources.lib.dragoman import script
+        STATE.playing = True
+        STATE.file = STREAM
+        script.run(['default.py', 'syncassistant'])
+        oks = [c[1] for c in STATE.dialog_calls if c[0] == 'ok']
+        self.assertTrue(oks[-1].startswith('The Sync assistant fixes the subtitle Dragoman handled'), oks)
+
+    def test_an_earlier_play_of_the_same_video_is_not_used(self):
+        from resources.lib.dragoman import script
+
+        def stop():
+            STATE.playing = False
+            self.player().onPlayBackStopped()
+
+        self.run_service({2: self.start_play, 4: self.open_dialog, 6: lambda: self.pick('TempSubtitle.en.srt', EN),
+                          7: self.join_job, 10: stop, 12: self.start_play,
+                          14: lambda: setattr(STATE, 'abort', True)})
+        self.assertEqual(self.offered(), [])
+        script.run(['default.py', 'syncassistant'])
+        oks = [c[1] for c in STATE.dialog_calls if c[0] == 'ok']
+        self.assertTrue(oks[-1].startswith('The Sync assistant fixes the subtitle Dragoman handled'), oks)
+
+    # ------------------------------------------------------------------ subtitles Dragoman does not translate
+    def local_film(self, fix=True):
+        """Film.2020.mkv on a share with its English subtitle next to it (and a stored fix for it)."""
+        import hashlib
+        from resources.lib.dragoman import kodi, timing
+        share = os.path.join(self.base, 'smb', 'nas', 'Movies')
+        write(os.path.join(share, 'Film.2020.mkv'), b'x')
+        data = make_srt(sentences(EN)).encode('utf-8')
+        write(os.path.join(share, 'Film.2020.en.srt'), data)
+        if fix:
+            key = timing.fix_key(timing.video_key('Film.2020.mkv', 'The Film (2021)'), hashlib.md5(data).hexdigest())
+            timing.FixStore(kodi.profile_dir()).add_point(key, 10000, 12400)
+        return share
+
+    def play_local(self, extra=None, until=8):
+        actions = {2: lambda: self.start_play('smb://nas/Movies/Film.2020.mkv'), 3: self.join_job,
+                   until: lambda: setattr(STATE, 'abort', True)}
+        actions.update(extra or {})
+        self.run_service(actions)
+
+    def test_do_nothing_user_keeps_what_kodi_shows(self):
+        STATE.settings['mode'] = '2'                # "Do nothing"
+        self.local_film()
+        STATE.subs_visible = False                  # subtitles are off
+        self.play_local()
+        self.assertEqual(STATE.loaded_subs, [])
+        self.assertIn('timing fix not loaded: Kodi is not showing this subtitle', self.log())
+        self.assertEqual(self.fake.generate_calls(), [])
+        # subtitles on, Kodi showing the English one: the re-timed copy replaces it, nothing forced
+        self.again()
+        STATE.subs_visible, STATE.cur_sub, STATE.subs, STATE.cur_index = True, 'eng', ['eng'], 0
+        self.play_local()
+        self.assertEqual(len(STATE.loaded_subs), 1)
+        self.assertTrue(STATE.loaded_subs[0].endswith('The Film (2021) synced.en.srt'))
+        self.assertIn('00:00:12,400 --> 00:00:13,300', self.loaded_text())
+        self.assertEqual(STATE.show_calls, [])
+        self.assertIn('Kodi switched to the re-timed subtitle', self.log())
+
+    def test_local_left_alone_subtitle_is_quiet_and_its_fix_applied(self):
+        import hashlib
+        from resources.lib.dragoman import kodi, timing
+        share = os.path.join(self.base, 'smb', 'nas', 'Movies')
+        write(os.path.join(share, 'Film.2020.mkv'), b'x')
+        data = make_srt(sentences(SR)).encode('utf-8')
+        write(os.path.join(share, 'Film.2020.srt'), data)        # no language in the name: the text says Serbian
+        STATE.subs_visible, STATE.cur_sub, STATE.subs, STATE.cur_index = True, 'hrv', ['hrv'], 0   # Kodi says Croatian
+        self.play_local()
+        self.assertIn('a local subtitle is already in a left-alone language - not translating', self.log())
+        self.assertEqual(self.toasts(), [])          # played often: no "left as it is" notice every time
+        self.assertEqual(STATE.loaded_subs, [])
+        # with a fix stored for it, the re-timed copy replaces it (Kodi's "Croatian" is the same subtitle)
+        key = timing.fix_key(timing.video_key('Film.2020.mkv', 'The Film (2021)'), hashlib.md5(data).hexdigest())
+        timing.FixStore(kodi.profile_dir()).add_point(key, 10000, 12400)
+        self.again()
+        STATE.subs_visible, STATE.cur_sub, STATE.subs, STATE.cur_index = True, 'hrv', ['hrv'], 0
+        self.play_local()
+        self.assertEqual(len(STATE.loaded_subs), 1)
+        self.assertTrue(STATE.loaded_subs[0].endswith('The Film (2021) synced.sr.srt'), STATE.loaded_subs)
+        self.assertIn('Timing fix from last time applied', self.toasts())
+        self.assertEqual(self.fake.generate_calls(), [])
+
+    def test_kodi_that_cannot_open_the_re_timed_copy_is_noticed(self):
+        STATE.settings['mode'] = '2'
+        self.local_film()
+        STATE.subs_visible, STATE.cur_sub, STATE.subs, STATE.cur_index = True, 'eng', ['eng'], 0
+        STATE.reject_subs = lambda path: (os.sep + 'temp' + os.sep) in path    # same language: the track number tells
+        self.play_local()
+        log = self.log()
+        self.assertIn('Kodi did not switch to the re-timed subtitle (attempt 1 of 2)', log)
+        self.assertEqual(len(STATE.loaded_subs), 2)
+        self.assertEqual(STATE.cur_index, 2)
+
+    def test_subtitle_with_translation_off_does_not_stop_a_translation(self):
+        STATE.settings['src_auto'] = 'false'
+        self.fake.delay = 1.0
+
+        def a4k_auto_download():
+            write(os.path.join(self.a4k, 'Other.Release.eng.srt'),
+                  make_srt(list(reversed(sentences(EN)))).encode('utf-8'))      # another English subtitle
+            self.player().onAVChange()
+
+        self.run_service({2: self.start_play, 4: self.open_dialog,
+                          6: lambda: self.pick('TempSubtitle.en.srt', EN),
+                          70: a4k_auto_download, 71: self.join_job,
+                          74: lambda: setattr(STATE, 'abort', True)})
+        log = self.log()
+        self.assertIn('Other.Release.eng.srt [addon:service.subtitles.a4ksubtitles] SRT -> auto', log)
+        self.assertIn('a translation is in progress - leaving this subtitle alone', log)
+        self.assertEqual(self._svc.job.outcome, 'loaded')
+        self.assertTrue(STATE.loaded_subs[-1].endswith('The Film (2021) AI.sl.srt'))
+
+    def test_re_timed_copy_kept_next_to_the_video_is_recognised(self):
+        """Kodi's subtitle dialog stores the file it is handed next to a local video, in place
+        of Film.2020.en.srt: next time Dragoman still knows the original timing."""
+        STATE.settings['mode'] = '2'
+        share = self.local_film(fix=False)
+        STATE.subs_visible, STATE.cur_sub, STATE.subs, STATE.cur_index = True, 'eng', ['eng'], 0
+        import xbmcgui
+        box = {}
+
+        def subtitle_dialog_sync():
+            STATE.time, STATE.select_answers = 2.0, [10]
+            box['ok'] = self.hear_at(12.85)
+            try:
+                box['path'] = self.download('sync', handle='9')
+            finally:
+                xbmcgui.Dialog.ok = box['ok']
+            shutil.copyfile(box['path'], os.path.join(share, 'Film.2020.en.srt'))     # Kodi: "next to the video"
+
+        self.play_local({5: subtitle_dialog_sync}, until=12)
+        self.assertTrue(box['path'])
+        self.assertIn('this is the re-timed subtitle Dragoman just made - nothing to do', self.log())
+
+        # Kodi restarts (window properties are gone) and the film is played again
+        self.again()
+        STATE.window_props = {}
+        STATE.subs_visible, STATE.cur_sub, STATE.subs, STATE.cur_index = True, 'eng', ['eng'], 0
+        self.play_local()
+        log = self.log()
+        self.assertIn('Film.2020.en.srt is a re-timed copy Dragoman made earlier (original, k=1.000000 b=+2.40s)', log)
+        self.assertIn('timing fix from last time: k=1.000000 b=+2.40s (offset)', log)
+        self.assertEqual(STATE.loaded_subs, [])        # what Kodi shows is timed like that already
+        self.assertEqual([o[2] for o in self.offered()], ['sync', 'undo'])
+        path = self.download('undo')
+        with io.open(path, encoding='utf-8-sig') as handle:
+            self.assertIn('00:00:10,000 --> 00:00:10,900', handle.read())     # the original timing again
+
+    # ------------------------------------------------------------------ add-on structure
+    def test_addon_xml_lists_the_subtitle_module_first(self):
+        # Kodi runs plugin:// calls (its subtitle dialog) with the library of the FIRST
+        # extension point; with the service first, the dialog would start a second service.
+        import xml.etree.ElementTree as ET
+        root = ET.parse(os.path.join(ADDON, 'addon.xml')).getroot()
+        points = [(e.get('point'), e.get('library')) for e in root.findall('extension')
+                  if e.get('point') != 'xbmc.addon.metadata']
+        self.assertEqual(points[0], ('xbmc.subtitle.module', 'subtitle.py'))
+        self.assertIn(('xbmc.service', 'service.py'), points)
+        self.assertIn(('xbmc.python.script', 'default.py'), points)
+
+    def test_a_plugin_call_that_reaches_service_py_does_not_start_a_service(self):
+        path = os.path.join(ADDON, 'service.py')
+        with io.open(path, encoding='utf-8') as handle:
+            code = compile(handle.read(), path, 'exec')
+        argv = sys.argv
+        sys.argv = ['plugin://service.subtitles.dragoman/', '5', '?action=search&languages=English']
+        STATE.abort = True            # should a service start anyway, it stops at once
+        try:
+            exec(code, {'__name__': '__main__', '__file__': path})     # like Kodi: argv[0] stays the plugin URL
+        finally:
+            sys.argv = argv
+        self.assertEqual(STATE.plugin_ended, [(5, True)])
+        self.assertNotIn('service started', self.log())
 
 
 if __name__ == '__main__':
