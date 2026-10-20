@@ -8,7 +8,9 @@ ready. Playback never pauses.
 
 - Works with subtitles picked in Kodi's subtitle dialog, downloaded automatically by a subtitle
   add-on (a4kSubtitles and others), or sitting next to a local video.
-- Subtitles already in your language, or in languages you choose to leave alone, are not translated.
+- Subtitles already in your language (regional variants included: `es-419` / Latin American Spanish counts
+  as Spanish), or in languages you choose to leave alone, are not translated.
+- Subtitles from add-ons that translate by themselves (Subterra, or any add-on you pick) are left alone.
 - Runs on any Kodi 19+ device: Android TV, phones, Windows, macOS, Linux, LibreELEC.
 - SRT and WebVTT subtitles. Finished translations are saved, so the same subtitle loads instantly next time.
 - Fixes subtitle timing too: a Sync assistant in Kodi's subtitle dialog (pick a line, press OK when you

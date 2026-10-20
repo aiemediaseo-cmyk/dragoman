@@ -41,6 +41,12 @@ SR_CYR = (u"Где си био синоћ? Био сам код куће. Шта
           u"Ћао, видимо се сутра. Љубав је лепа ствар. Њега нема овде.") * 6
 
 
+ES_LATAM = (u"¿Dónde estabas anoche? Estaba en la casa. ¿Qué te pasa? Tú sabes lo que quiero decir. "
+            u"No quiero ir allá otra vez, está muy lejos. Ahora vamos, ándale, que se nos hace tarde. "
+            u"Gracias por todo, en serio. ¿Qué onda con ella? No sé, pero está bien. Todo bien aquí, "
+            u"no te preocupes. Eso es para ti, ¿ok? Sí, claro, lo que tú digas. Estoy cansado.")
+
+
 def make_srt(texts, crlf=True):
     parts = []
     for i, t in enumerate(texts):
@@ -135,6 +141,74 @@ class LangTests(unittest.TestCase):
         self.assertEqual(len(codes), len(set(codes)))
         ids = [row[3] for row in languages.LANGUAGES]
         self.assertEqual(ids, list(range(32501, 32501 + len(ids))))
+
+
+class RegionalVariantTests(unittest.TestCase):
+    """Subtitle add-ons label Latin American Spanish 'es-419', 'Spanish (LatAm)',
+    u'Español Latinoamericano'... it is still Spanish: a Spanish target leaves it alone."""
+
+    def test_file_names(self):
+        from resources.lib.dragoman import util
+        for name in ('Movie.es-419.srt', 'Movie.es_419.srt', 'Movie.es_SR.srt', 'Movie.es-MX.forced.srt',
+                     'Movie.Spanish (LatAm).srt', 'Movie.Spanish (Latin America).srt',
+                     u'Movie.Español Latinoamericano.srt', 'Movie.latino.srt', 'Movie.spa.srt',
+                     'TempSubtitle.es-419.srt'):
+            self.assertEqual(util.guess_lang(name), 'es', name)
+        self.assertEqual(util.guess_lang('Movie.pt-BR.srt'), 'pt')
+        self.assertEqual(util.guess_lang('Movie.en_US.srt'), 'en')
+        self.assertEqual(util.guess_lang('Movie.Serbian (Cyrillic).srt'), 'sr')
+        # nothing new is invented
+        self.assertEqual(util.guess_lang('Captain America.srt'), '')
+        self.assertEqual(util.guess_lang('Movie.WEB-DL.srt'), '')
+        self.assertEqual(util.guess_lang('subterra_active.srt'), '')
+        self.assertEqual(langdetect.classify('Movie.Serbian (Cyrillic).srt', SR_CYR)[0], 'sr-Cyrl')
+
+    def test_names_kodi_and_add_ons_use(self):
+        n = languages.normalize
+        for value in ('es-419', 'es_419', 'es_SR', 'es-MX', 'Spanish (LatAm)', 'Spanish (Latin America)',
+                      u'Español Latinoamericano', u'español', 'Castellano', 'spa', 'Spanish (Mexico)'):
+            self.assertEqual(n(value), 'es', value)
+        self.assertEqual(n('Portuguese (Brazil)'), 'pt-BR')
+        self.assertEqual(n('pt_BR'), 'pt-BR')
+        self.assertEqual(n('pt_PT'), 'pt')
+        self.assertEqual(n('sr_Cyrl'), 'sr-Cyrl')
+        self.assertEqual(n('sr-Latn'), 'sr')
+        self.assertEqual(n('zh-TW'), 'zh-Hant')
+        self.assertEqual(n('en-US'), 'en')
+        self.assertEqual(n('Klingon (Qo)'), '')
+        self.assertEqual(n('subterra'), '')
+
+    def test_latin_american_spanish_is_left_alone_for_a_spanish_target(self):
+        self.assertEqual(langdetect.detect_text(ES_LATAM)[0], 'es')
+        for name in ('Movie.es-419.srt', 'Movie.Spanish (LatAm).srt', u'Película.Español Latinoamericano.srt',
+                     'subtitle.srt'):
+            code = langdetect.classify(name, ES_LATAM)[0]
+            self.assertEqual(code, 'es', name)
+            self.assertTrue(languages.matches(code, ['es']), name)
+
+
+class OtherAddonTests(unittest.TestCase):
+    def test_subterra_files_and_folders(self):
+        from resources.lib.dragoman import others
+        ids = others.DEFAULT_IGNORED
+        self.assertEqual(ids, ['script.subterra'])
+        temp = '/storage/.kodi/temp/'
+        self.assertEqual(others.owner(temp + 'subterra_eng.srt', 'subterra_eng.srt', ids), 'script.subterra')
+        self.assertEqual(others.owner(temp + 'subterra_active.srt', 'subterra_active.srt', ids), 'script.subterra')
+        self.assertEqual(others.owner(temp + 'Subterra_Active.SRT', 'Subterra_Active.SRT', ids), 'script.subterra')
+        self.assertEqual(others.owner(temp + 'TempSubtitle.en.srt', 'TempSubtitle.en.srt', ids), '')
+        self.assertEqual(others.owner(temp + 'subterra_eng.srt', 'subterra_eng.srt', []), '')
+        win = 'C:\\Users\\x\\AppData\\Roaming\\Kodi\\userdata\\addon_data\\script.subterra\\a.srt'
+        self.assertEqual(others.owner(win, 'a.srt', ids), 'script.subterra')
+        # an add-on we know nothing about: its folders, and files named after it
+        other = ['service.subtitles.autotranslate']
+        self.assertEqual(others.owner('/k/addon_data/service.subtitles.autotranslate/x/en.srt', 'en.srt', other),
+                         'service.subtitles.autotranslate')
+        self.assertEqual(others.owner(temp + 'autotranslate_es.srt', 'autotranslate_es.srt', other),
+                         'service.subtitles.autotranslate')
+        self.assertEqual(others.owner(temp + 'TempSubtitle.en.srt', 'TempSubtitle.en.srt', ['script.abc']), '')
+        self.assertEqual(others.clean_ids([' Script.Subterra ', 'script.subterra', '', 'bad id']),
+                         ['script.subterra'])
 
 
 class FakeClient(object):

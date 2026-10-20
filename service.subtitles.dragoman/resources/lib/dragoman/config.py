@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Add-on settings in one place. Read fresh with Config.load() whenever needed."""
-from . import kodi, languages, state
+from . import kodi, languages, others, state
 
 MODEL_CHOICES = [
     'gemini-3.5-flash-lite',
@@ -50,6 +50,10 @@ class Config(object):
             c.leave_alone = languages.parse_code_list(','.join(saved['leave_alone']))
         else:   # v0.1.0 kept it in settings.xml
             c.leave_alone = languages.parse_code_list(kodi.setting('leave_alone', ''))
+        if isinstance(saved.get('ignore_addons'), list):
+            c.ignore_addons = others.clean_ids(saved['ignore_addons'])
+        else:   # not chosen yet: the known translator add-ons
+            c.ignore_addons = list(others.DEFAULT_IGNORED)
         c.src_manual = kodi.setting_bool('src_manual', True)
         c.src_auto = kodi.setting_bool('src_auto', True)
         c.src_local = kodi.setting_bool('src_local', True)
@@ -86,10 +90,11 @@ class Config(object):
         return 'set (%s...%s, %d chars)' % (self.api_key[:4], self.api_key[-4:], len(self.api_key))
 
     def summary(self):
-        return ('target=%s (%s) leave_alone=%s sources=%s mode=%s key: %s | models=%s fallback=%s '
+        return ('target=%s (%s) leave_alone=%s ignore_addons=%s sources=%s mode=%s key: %s | models=%s fallback=%s '
                 'chunk=%d rpm=%d cache_days=%d progress=%s notify_skips=%s debug=%s charset=%s '
                 'timing=%s reaction=%dms' % (
                     self.target, self.target_source, ','.join(self.leave_alone) or '-',
+                    ','.join(self.ignore_addons) or '-',
                     ','.join(s for s in ('manual', 'auto', 'local') if self.source_enabled(s)) or '-',
                     ('auto', 'ask', 'off')[self.mode], self.key_hint(), self.models[0], self.fallback,
                     self.chunk_size, self.rpm, self.cache_days, self.show_progress, self.notify_skips,

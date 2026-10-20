@@ -5,6 +5,8 @@ ORDER MATTERS: the settings enum for the target language stores an index into
 LANGUAGES (index 0 in settings is "Auto"). Only ever append new languages.
 """
 
+import re
+
 # (code, English name as Kodi uses it, native name, string id in strings.po)
 LANGUAGES = [
     ('en', 'English', 'English', 32501),
@@ -72,21 +74,47 @@ _ALIASES = {
     'jpn': 'ja', 'kor': 'ko', 'vie': 'vi', 'tha': 'th', 'ind': 'id', 'may': 'ms', 'msa': 'ms',
     'mac': 'mk', 'mkd': 'mk', 'serbian (latin)': 'sr', 'sr-latn': 'sr', 'sr-cyrl': 'sr-Cyrl',
     'serbian cyrillic': 'sr-Cyrl', 'pt-br': 'pt-BR',
+    # Spanish under other names: Latin American Spanish counts as Spanish
+    u'español': 'es', 'espanol': 'es', 'castellano': 'es', 'castilian': 'es', 'latino': 'es',
+    'spanish (latin america)': 'es', 'spanish (latin american)': 'es', 'spanish (latam)': 'es',
+    'spanish (spain)': 'es', 'spanish (mexico)': 'es', 'spanish (argentina)': 'es', 'es-419': 'es',
+    'latin american spanish': 'es', u'español latinoamericano': 'es', u'español (latinoamérica)': 'es',
+    'portuguese (portugal)': 'pt', u'português': 'pt', 'portugues': 'pt',
+    u'português (brasil)': 'pt-BR', 'portuguese (brazil)': 'pt-BR',
 }
+_REGION_CODE_RE = re.compile(r'^([a-z]{2,3})[-_]([a-z]{2,4}|\d{3})$')
 _BY_NAME = {}
 for _row in LANGUAGES:
     _BY_NAME[_row[1].lower()] = _row[0]
     _BY_NAME[_row[0].lower()] = _row[0]
 
 
+def _lookup(v):
+    return _BY_NAME.get(v) or _ALIASES.get(v, '')
+
+
 def normalize(value):
-    """Code for a language code or English name, or '' if unknown."""
+    """Code for a language code or English name, or '' if unknown.
+
+    Regional variants count as the language itself unless we list them on their own
+    (pt-BR, zh-Hant, sr-Cyrl): 'es-419', 'es_MX', 'Spanish (LatAm)', u'Español
+    Latinoamericano' are all 'es'. Subtitle add-ons label their tracks like that."""
     if not value:
         return ''
-    v = value.strip().lower()
-    if v in _BY_NAME:
-        return _BY_NAME[v]
-    return _ALIASES.get(v, '')
+    v = ' '.join(value.strip().lower().split())
+    code = _lookup(v) or _lookup(v.replace('_', '-'))   # 'pt_BR' like 'pt-BR'
+    if code:
+        return code
+    m = _REGION_CODE_RE.match(v)                       # 'es-419', 'es_mx', 'en-us'
+    if m:
+        return _lookup(m.group(1))
+    head = v.split('(', 1)[0].strip()                  # 'spanish (latam)' -> 'spanish'
+    if head and head != v:
+        return _lookup(head)
+    first = v.split(' ', 1)[0]                         # u'español latinoamericano'
+    if first != v:
+        return _lookup(first)
+    return ''
 
 
 def english_name(code):

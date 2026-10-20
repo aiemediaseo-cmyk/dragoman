@@ -157,10 +157,10 @@ _LANG_TABLE = {
     'bs': ('bs', 'bos', 'bosnian', 'bosanski'),
     'mk': ('mk', 'mac', 'mkd', 'macedonian'),
     'de': ('de', 'ger', 'deu', 'german', 'deutsch'),
-    'es': ('es', 'spa', 'spanish', 'espanol'),
+    'es': ('es', 'spa', 'spanish', 'espanol', u'español', 'castellano', 'castilian', 'latino', 'esl'),
     'fr': ('fr', 'fre', 'fra', 'french', 'francais'),
     'it': ('it', 'ita', 'italian', 'italiano'),
-    'pt': ('pt', 'por', 'portuguese', 'pb', 'pob'),
+    'pt': ('pt', 'por', 'portuguese', 'pb', 'pob', 'brazilian', u'português', 'portugues'),
     'nl': ('nl', 'dut', 'nld', 'dutch'),
     'pl': ('pl', 'pol', 'polish'),
     'cs': ('cs', 'cze', 'ces', 'czech'),
@@ -193,6 +193,24 @@ for _code, _aliases in _LANG_TABLE.items():
         _LANG_LOOKUP[_alias] = _code
 _NAME_FLAGS = ('forced', 'sdh', 'cc', 'hi', 'default', 'full', 'signs', 'songs',
                'sub', 'subs', 'subtitle', 'subtitles')
+# Words naming a region or script after the language ('Spanish (LatAm)', u'Español
+# Latinoamericano', 'Serbian (Cyrillic)', 'Chinese (Traditional)'): skipped like the flags
+# above, so the language word before them decides.
+_REGION_WORDS = frozenset((
+    'latam', 'lat', 'latin', 'america', 'american', 'americas', 'latinoamerica', u'latinoamérica',
+    'latinoamericano', 'latinoamericana', 'hispanoamerica', 'hispanoamericano', 'spain', u'españa',
+    'mexico', u'méxico', 'mexican', 'argentina', 'european', 'europe', 'eu', 'brazil', 'brasil',
+    'brasileiro', 'portugal', 'canada', 'canadian', 'switzerland', 'austria', 'belgium',
+    'traditional', 'simplified', 'cyrillic', 'cyrl', 'cyr', 'latn', 'latinica', 'cirilica',
+    '419'))
+# 'es-419', 'es_MX', 'pt-BR', 'en_US': a language code with a region after it
+_REGION_CODE_RE = re.compile(r'(?i)(^|[.\s_\[\]()-])([a-z]{2,3})[-_]([a-z]{2}|\d{3})(?=$|[.\s_\[\]()-])')
+
+
+def _drop_region_codes(stem):
+    def repl(m):
+        return m.group(1) + m.group(2) if m.group(2).lower() in _LANG_LOOKUP else m.group(0)
+    return _REGION_CODE_RE.sub(repl, stem)
 
 
 def guess_lang(name):
@@ -200,12 +218,14 @@ def guess_lang(name):
 
     Works with 'Movie.en.srt' and with names whose ending IS the language
     ('TempSubtitle.en.eng', 'Movie.1080p.eng' - a4kSubtitles saves some
-    downloads like that)."""
+    downloads like that). Regional variants count as the language itself:
+    'Movie.es-419.srt', 'Movie.Spanish (LatAm).srt' -> 'es'."""
     base, dot, ext = name.rpartition('.')
     stem = base if (dot and ('.' + ext.lower()) in SUB_EXTS + ARCHIVE_EXTS) else name
+    stem = _drop_region_codes(stem)
     tokens = [t for t in re.split(r'[.\s_\-\[\]()]+', stem.lower()) if t]
-    for tok in reversed(tokens[-4:]):
-        if tok in _NAME_FLAGS:
+    for tok in reversed(tokens[-5:]):
+        if tok in _NAME_FLAGS or tok in _REGION_WORDS:
             continue
         return _LANG_LOOKUP.get(tok, '')
     return ''

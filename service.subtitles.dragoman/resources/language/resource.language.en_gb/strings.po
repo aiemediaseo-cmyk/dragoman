@@ -30,6 +30,10 @@ msgctxt "#32102"
 msgid "Languages to leave alone..."
 msgstr ""
 
+msgctxt "#32103"
+msgid "Subtitles from other add-ons to ignore..."
+msgstr ""
+
 msgctxt "#32104"
 msgid "Translate subtitles that come from"
 msgstr ""
@@ -268,6 +272,10 @@ msgctxt "#32230"
 msgid "Languages to leave alone (never translated)"
 msgstr ""
 
+msgctxt "#32231"
+msgid "Never touch subtitles from these add-ons (e.g. ones that translate by themselves)"
+msgstr ""
+
 msgctxt "#32232"
 msgid "Saved"
 msgstr ""
@@ -290,6 +298,14 @@ msgstr ""
 
 msgctxt "#32237"
 msgid "Remove the saved Gemini API key from this device?"
+msgstr ""
+
+msgctxt "#32238"
+msgid "(not installed)"
+msgstr ""
+
+msgctxt "#32239"
+msgid "No subtitle or service add-ons are installed."
 msgstr ""
 
 # Log

@@ -3,6 +3,7 @@
     <category label="32100">
         <setting id="target_language" type="enum" label="32101" lvalues="32110|32501|32502|32503|32504|32505|32506|32507|32508|32509|32510|32511|32512|32513|32514|32515|32516|32517|32518|32519|32520|32521|32522|32523|32524|32525|32526|32527|32528|32529|32530|32531|32532|32533|32534|32535|32536|32537|32538|32539|32540|32541|32542|32543|32544" default="0"/>
         <setting type="action" label="32102" action="RunScript(service.subtitles.dragoman,leavealone)" option="close"/>
+        <setting type="action" label="32103" action="RunScript(service.subtitles.dragoman,ignoreaddons)" option="close"/>
         <setting type="lsep" label="32104"/>
         <setting id="src_manual" type="bool" label="32105" default="true"/>
         <setting id="src_auto" type="bool" label="32106" default="true"/>

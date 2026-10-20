@@ -2,13 +2,13 @@
 """Menu (Program add-ons > Dragoman) and the Settings buttons.
 
 RunScript(service.subtitles.dragoman[,action]) with action one of:
-translate, enterkey, importurl, importkey, testkey, removekey, leavealone, clearcache, sendlog,
+translate, enterkey, importurl, importkey, testkey, removekey, leavealone, ignoreaddons, clearcache, sendlog,
 syncassistant, undotiming, fixframerate (timing of the subtitle that is showing; during playback),
 oldaddon (asked by the service when the earlier version of the add-on is still switched on)
 
 A remote button can be mapped to RunScript(service.subtitles.dragoman,syncassistant).
 
-The API key and the languages to leave alone are saved in state.json (see
+The API key, the languages to leave alone and the add-ons to ignore are saved in state.json (see
 state.py), never in settings.xml, so the settings dialog cannot undo them.
 """
 import json
@@ -20,7 +20,7 @@ import xbmcgui
 import xbmcvfs
 
 from . import cache as cache_mod
-from . import diag, gemini, keysource, kodi, languages, migrate, state, sync, translator
+from . import diag, gemini, keysource, kodi, languages, migrate, others, state, sync, translator
 from .config import Config
 from .log import get_log
 
@@ -31,7 +31,8 @@ def run(argv):
     action = argv[1] if len(argv) > 1 else ''
     handlers = {'translate': translate_now, 'enterkey': enter_key, 'importurl': import_key_url,
                 'importkey': import_key, 'testkey': test_key, 'removekey': remove_key,
-                'leavealone': choose_leave_alone, 'clearcache': clear_cache, 'sendlog': send_log,
+                'leavealone': choose_leave_alone, 'ignoreaddons': choose_ignored_addons,
+                'clearcache': clear_cache, 'sendlog': send_log,
                 'oldaddon': migrate.offer_to_disable_old, 'syncassistant': sync.run_assistant_from_menu,
                 'undotiming': sync.undo_from_menu, 'fixframerate': sync.framerate_from_menu}
     try:
@@ -57,8 +58,9 @@ def main_menu():
         first_run()
     entries = [(32202, translate_now), (32427, sync.run_assistant_from_menu), (32428, sync.undo_from_menu),
                (32203, enter_key), (32273, import_key_url), (32204, import_key),
-               (32205, test_key), (32206, choose_leave_alone), (32207, clear_cache), (32208, view_log),
-               (32209, send_log), (32236, remove_key), (32210, open_settings)]
+               (32205, test_key), (32206, choose_leave_alone), (32103, choose_ignored_addons),
+               (32207, clear_cache), (32208, view_log), (32209, send_log), (32236, remove_key),
+               (32210, open_settings)]
     while True:
         heading = '%s %s - %s' % (kodi.addon_name(), kodi.addon_version(), _status())
         index = xbmcgui.Dialog().select(heading, [kodi.text(sid) for sid, _fn in entries])
@@ -289,6 +291,50 @@ def choose_leave_alone():
         return
     state.update(leave_alone=[codes[i] for i in chosen])
     get_log().info('languages to leave alone: %s' % (','.join(codes[i] for i in chosen) or '-'))
+    kodi.notify(kodi.text(32232), 2000)
+
+
+def _installed_addons():
+    """{addon id: name} of the installed subtitle and service add-ons (Subterra is a service)."""
+    found = {}
+    for addon_type in ('xbmc.subtitle.module', 'xbmc.service'):
+        params = {'type': addon_type, 'enabled': 'all', 'properties': ['name']}
+        result, err = kodi.jsonrpc('Addons.GetAddons', params)
+        if err or not isinstance(result, dict):
+            continue
+        for addon in result.get('addons') or []:
+            addon_id = ('%s' % (addon.get('addonid') or '')).lower()
+            if addon_id and addon_id not in found:
+                found[addon_id] = addon.get('name') or addon_id
+    for own in (kodi.ADDON_ID, migrate.OLD_ID):
+        found.pop(own, None)
+    return found
+
+
+def choose_ignored_addons():
+    """Add-ons whose subtitles Dragoman never touches (e.g. Subterra, which translates by itself)."""
+    cfg = Config.load()
+    installed = _installed_addons()
+    ids = sorted(installed, key=lambda i: (installed[i].lower(), i))
+    ids += [i for i in cfg.ignore_addons if i not in installed]      # chosen earlier, not installed now
+    if not ids:
+        xbmcgui.Dialog().ok(kodi.addon_name(), kodi.text(32239))
+        return
+    names = []
+    for addon_id in ids:
+        if addon_id in installed:
+            names.append('%s  [%s]' % (installed[addon_id], addon_id))
+        else:
+            names.append('%s  [%s] %s' % (others.display_name(addon_id), addon_id, kodi.text(32238)))
+    preselect = [i for i, addon_id in enumerate(ids) if addon_id in cfg.ignore_addons]
+    try:
+        chosen = xbmcgui.Dialog().multiselect(kodi.text(32231), names, preselect=preselect)
+    except TypeError:
+        chosen = xbmcgui.Dialog().multiselect(kodi.text(32231), names)
+    if chosen is None:
+        return
+    state.update(ignore_addons=[ids[i] for i in chosen])
+    get_log().info('add-ons to ignore: %s' % (','.join(ids[i] for i in chosen) or '-'))
     kodi.notify(kodi.text(32232), 2000)
 
 

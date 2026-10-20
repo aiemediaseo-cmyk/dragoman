@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addons>
-<addon id="service.subtitles.dragoman" name="Dragoman" version="0.4.0" provider-name="AIE Media">
+<addon id="service.subtitles.dragoman" name="Dragoman" version="0.4.1" provider-name="AIE Media">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
     </requires>
@@ -26,10 +26,10 @@ A dragoman was the interpreter who stood between travellers and the language aro
             <icon>resources/icon.png</icon>
             <fanart>resources/fanart.jpg</fanart>
         </assets>
-        <news>v0.4.0 - Timing. Sync assistant: during playback open Subtitles > Download > Dragoman, pick a line and press OK when you hear it - once fixes a delay, twice (later in the film) fixes drift too. Subtitles made for a different frame rate (they drift further off as the film goes on) are spotted, and Dragoman asks before fixing them (Settings > Timing). Fixes, Undo and "no" are remembered for that video and subtitle, also for its translations.
+        <news>v0.4.1 - Works next to Subterra: subtitles from add-ons that translate by themselves are left to them (Subterra from the start; Settings > Subtitles from other add-ons to ignore). Latin American Spanish (es-419, Spanish (LatAm)) and other regional variants count as the language itself, so they are not translated again.
+v0.4.0 - Timing. Sync assistant: during playback open Subtitles > Download > Dragoman, pick a line and press OK when you hear it - once fixes a delay, twice (later in the film) fixes drift too. Subtitles made for a different frame rate (they drift further off as the film goes on) are spotted, and Dragoman asks before fixing them (Settings > Timing). Fixes, Undo and "no" are remembered for that video and subtitle, also for its translations.
 v0.3.0 - Better male and female forms: Dragoman first works out who the characters are (from the dialogue, title, plot and cast) and has Gemini decide who is speaking before translating each line, so "I was tired" comes out as "bio sam" or "bila sam" correctly far more often, and formal or informal "you" stays consistent. Subtitles translated with earlier versions are translated again once.
-v0.2.2 - English subtitles are no longer taken for Croatian or Serbian (a stray word like "sad" or "ja" could tip the language check); the language in the file name now wins unless the text clearly says otherwise. A notice says how long a translation will take, and stopping playback mid-translation tells you the finished part is kept.
-v0.2.1 - Dragoman now lives on GitHub and installs and updates through the Dragoman Repository (repository.dragoman).</news>
+v0.2.2 - English subtitles are no longer taken for Croatian or Serbian (a stray word like "sad" or "ja" could tip the language check); the language in the file name now wins unless the text clearly says otherwise. A notice says how long a translation will take, and stopping playback mid-translation tells you the finished part is kept.</news>
     </extension>
 </addon>
 <addon id="repository.dragoman" name="Dragoman Repository" version="1.0.0" provider-name="AIE Media">

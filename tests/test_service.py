@@ -20,7 +20,7 @@ sys.path.insert(0, ADDON)
 sys.path.insert(0, HERE)
 
 from kodistate import STATE  # noqa: E402
-from test_core import EN, HR, SL, SR, SR_CYR, episode_cues, make_srt  # noqa: E402
+from test_core import EN, ES_LATAM, HR, SL, SR, SR_CYR, episode_cues, make_srt  # noqa: E402
 from test_core import srt as core_srt  # noqa: E402
 
 # Fake keys are built from two parts so secret scanners do not mistake them for real ones.
@@ -540,6 +540,112 @@ class StreamTests(Base):
                           10: lambda: setattr(STATE, 'abort', True)})
         self.assertEqual(self.fake.generate_calls(), [])
         self.assertIn('Add your Gemini API key: Program add-ons > Dragoman', self.toasts())
+
+
+class OtherAddonTests(Base):
+    """Subterra (script.subterra) translates by itself: it writes the film's English track to
+    special://temp/subterra_eng.srt and its translation, a few lines at a time, to
+    special://temp/subterra_active.srt (names from Subterra 0.3.11). Dragoman must not touch
+    either, or the two add-ons fight over the subtitle on screen (GitHub issue report)."""
+
+    def subterra_writes(self, name, text, n=30):
+        write(os.path.join(self.temp, name), make_srt(sentences(text, n)).encode('utf-8'))
+        STATE.subs = list(STATE.subs) + ['subterra']
+        self.player().onAVChange()
+
+    def subterra_session(self, extra=None):
+        STATE.subs = ['KIN']
+        actions = {
+            2: self.start_play,
+            6: lambda: self.subterra_writes('subterra_eng.srt', EN),
+            8: lambda: self.subterra_writes('subterra_active.srt', ES_LATAM, 6),
+            30: lambda: self.subterra_writes('subterra_active.srt', ES_LATAM + ' ' + EN, 14),   # grows
+            60: lambda: self.subterra_writes('subterra_active.srt', ES_LATAM, 30),
+            70: self.join_job,
+            90: lambda: setattr(STATE, 'abort', True)}
+        actions.update(extra or {})
+        self.run_service(actions)
+        return self.log()
+
+    def test_subterra_files_are_ignored_by_default(self):
+        log = self.subterra_session({
+            # a subtitle picked from a4k in the same playback is still translated
+            72: self.open_dialog, 74: lambda: self.pick('TempSubtitle.en.srt', EN), 76: self.join_job})
+        print(log)
+        self.assertIn('subtitle: subterra_eng.srt [temp] comes from Subterra (script.subterra) - ignored', log)
+        self.assertIn('subtitle: subterra_active.srt [temp] comes from Subterra (script.subterra) - ignored', log)
+        self.assertEqual(log.count('comes from Subterra'), 2)          # once per file, not on every rewrite
+        self.assertNotIn('using the newest subtitle file subterra', log)
+        self.assertNotIn('language en by file name; target sl\n', log.split('TempSubtitle.en.srt')[0])
+        self.assertIn('ignore_addons=script.subterra', log)
+        self.assertEqual(len(self.fake.generate_calls()), 1)          # only the a4k pick
+        self.assertEqual(len(STATE.loaded_subs), 1)
+        self.assertTrue(STATE.loaded_subs[0].endswith('AI.sl.srt'))
+
+    def test_chooser_lists_service_add_ons_and_an_empty_choice_is_kept(self):
+        from resources.lib.dragoman import script
+
+        def get_addons(params):
+            if params.get('type') == 'xbmc.service':
+                return {'addons': [{'addonid': 'script.subterra', 'name': 'Subterra'},
+                                   {'addonid': 'service.subtitles.dragoman', 'name': 'Dragoman'}]}
+            return {'addons': [{'addonid': 'service.subtitles.a4ksubtitles', 'name': 'a4kSubtitles'},
+                               {'addonid': 'service.subtitles.dragoman', 'name': 'Dragoman'}]}
+        STATE.jsonrpc['Addons.GetAddons'] = get_addons
+        STATE.multiselect_answer = []
+        script.run(['default.py', 'ignoreaddons'])
+        call = [c for c in STATE.dialog_calls if c[0] == 'multiselect'][0]
+        self.assertEqual(call[2], ['a4kSubtitles  [service.subtitles.a4ksubtitles]', 'Subterra  [script.subterra]'])
+        self.assertEqual(call[3], [1])                                # Subterra preselected
+        self.assertEqual(self.load_state()['ignore_addons'], [])
+        from resources.lib.dragoman.config import Config
+        self.assertEqual(Config.load().ignore_addons, [])
+        # switched off: Subterra's English source is translated like any other subtitle
+        log = self.subterra_session()
+        print(log)
+        # what the user saw: Subterra's files picked up, re-translated on every rewrite
+        self.assertNotIn('comes from Subterra', log)
+        self.assertIn('new subtitle: subterra_eng.srt [temp]', log)
+        self.assertIn('changed subtitle: subterra_active.srt [temp]', log)
+        self.assertGreaterEqual(len(self.fake.generate_calls()), 1)
+        # and back on, with an add-on that is not installed any more kept on the list
+        STATE.dialog_calls = []
+        self.save_state(ignore_addons=['script.subterra', 'script.gone'])
+        STATE.multiselect_answer = [1, 2]
+        script.run(['default.py', 'ignoreaddons'])
+        call = [c for c in STATE.dialog_calls if c[0] == 'multiselect'][0]
+        self.assertEqual(call[2][2], 'script.gone  [script.gone] (not installed)')
+        self.assertEqual(call[3], [1, 2])
+        self.assertEqual(self.load_state()['ignore_addons'], ['script.subterra', 'script.gone'])
+
+
+class SpanishTargetTests(Base):
+    settings = {}
+
+    def setUp(self):
+        Base.setUp(self)
+        from resources.lib.dragoman import languages
+        codes = [row[0] for row in languages.LANGUAGES]
+        STATE.settings['target_language'] = str(codes.index('es') + 1)
+
+    def test_latin_american_spanish_is_not_translated_again(self):
+        names = ['Movie.es-419.srt', 'Movie.Spanish (LatAm).srt', u'Movie.Español Latinoamericano.srt']
+
+        def a4k(name):
+            write(os.path.join(self.a4k, name), make_srt(sentences(ES_LATAM)).encode('utf-8'))
+            self.player().onAVChange()
+
+        actions = {2: self.start_play, 200: lambda: setattr(STATE, 'abort', True)}
+        for i, name in enumerate(names):
+            actions[10 + 60 * i] = (lambda n: lambda: a4k(n))(name)
+            actions[12 + 60 * i] = self.join_job
+        self.run_service(actions)
+        log = self.log()
+        print(log)
+        for name in names:
+            self.assertIn('left alone: %s is in es' % name, log)
+        self.assertEqual(len(self.fake.generate_calls()), 0)
+        self.assertEqual(len(STATE.loaded_subs), 0)
 
 
 class AskAndOffTests(Base):

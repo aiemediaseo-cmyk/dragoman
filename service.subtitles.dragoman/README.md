@@ -1,4 +1,4 @@
-# Dragoman (service.subtitles.dragoman) v0.4.0 - test build
+# Dragoman (service.subtitles.dragoman) v0.4.1 - test build
 
 Your subtitle interpreter: translates subtitles into your language with Google
 Gemini while the video keeps playing. Works on any Kodi 19+ device, for streams
@@ -40,7 +40,12 @@ the translated subtitle replaces the original when it is ready (usually well
 under a minute for a film). Playback never pauses.
 
 - Subtitles already in your language, or in the languages you choose under
-  **Languages to leave alone**, are never translated.
+  **Languages to leave alone**, are never translated. Regional variants count
+  as the language: Latin American Spanish (`es-419`, "Spanish (LatAm)",
+  "Español Latinoamericano") is Spanish, `en-US` is English.
+- Subtitles made by add-ons that translate by themselves are left to them.
+  Subterra is on that list from the start; change it under **Subtitles from
+  other add-ons to ignore...**.
 - **Translate the current subtitle now** (in the menu) translates the last
   subtitle anyway, even if it is in a left-alone language.
 - Finished translations are saved, so picking the same subtitle again loads
@@ -76,7 +81,7 @@ goes on - are fixed during playback:
 
 ## Settings
 - **General:** target language (Auto = Kodi's subtitle language), languages to
-  leave alone, which sources to translate (download dialog / automatic
+  leave alone, add-ons whose subtitles to ignore, which sources to translate (download dialog / automatic
   downloads / files next to the video), translate automatically / ask first /
   do nothing.
 - **Gemini:** enter the API key, import it from a web address or a file, test

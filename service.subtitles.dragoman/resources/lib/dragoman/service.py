@@ -21,7 +21,7 @@ import time
 
 import xbmc
 
-from . import envinfo, kodi, langdetect, languages, migrate, scanner, srt, sync, timing, util
+from . import envinfo, kodi, langdetect, languages, migrate, others, scanner, srt, sync, timing, util
 from .cache import Cache
 from .config import MODE_OFF, Config
 from .job import Candidate, TranslationJob, output_temp_dir
@@ -76,6 +76,7 @@ class Session(object):
         self.seen = 0                 # subtitle files considered so far
         self.considered = set()       # (path, size, mtime) already considered
         self.own_load_until = 0.0
+        self.ignored = set()          # file names from ignored add-ons, reported once
 
 
 class _Player(xbmc.Player):
@@ -328,6 +329,8 @@ class TranslatorService(object):
         self.session = s
         self.last_candidate = None
         self.recent.clear()
+        self.cfg = Config.load()      # the menu may have changed state.json (e.g. add-ons to ignore)
+        self.log.debug_enabled = self.cfg.debug
         s.meta = self.read_meta(playing_file)
         s.stream_count = len(_try(self.player.getAvailableSubtitleStreams, []) or [])
         s.roots = self.build_roots(playing_file)
@@ -433,6 +436,7 @@ class TranslatorService(object):
             pass
         ids.discard(kodi.ADDON_ID)
         ids.discard(migrate.OLD_ID)       # the earlier version of this add-on: its output is a translation
+        ids.difference_update(self.cfg.ignore_addons)
         for addon_id in sorted(ids):
             roots.append(scanner.Root('addon:' + addon_id, 'addon',
                                       'special://profile/addon_data/%s/' % addon_id, depth))
@@ -498,7 +502,8 @@ class TranslatorService(object):
         now = time.time()
         recent = sorted((e for e in files.values()
                          if e.kind in ('sub', 'maybe') and e.mtime and now - e.mtime < RECENT_FILE_SECONDS
-                         and (e.key, e.size, e.mtime) not in s.considered and e.is_subtitle),
+                         and (e.key, e.size, e.mtime) not in s.considered and e.is_subtitle
+                         and not others.owner(e.key, e.name, self.cfg.ignore_addons)),
                         key=lambda e: e.mtime, reverse=True)
         if recent:
             entry = recent[0]
@@ -510,7 +515,21 @@ class TranslatorService(object):
         self.log.info('Kodi lists more subtitle tracks now, but no new subtitle file turned up in the '
                       'watched folders (fine if you switched tracks yourself): ' + self.roots_summary(s, stats))
 
+    def ignored_by(self, s, entry, what='new'):
+        """The add-on a file comes from when its subtitles are to be ignored (see others.py), or ''."""
+        addon_id = others.owner(entry.key, entry.name, self.cfg.ignore_addons)
+        if addon_id:
+            if entry.name not in s.ignored:
+                s.ignored.add(entry.name)
+                self.log.info('%s subtitle: %s [%s] comes from %s (%s) - ignored, as set in the settings' % (
+                    what, entry.name, entry.root.label, others.display_name(addon_id), addon_id))
+            else:
+                self.log.debug('%s subtitle: %s from %s - ignored' % (what, entry.name, addon_id))
+        return addon_id
+
     def consider(self, s, entry, trigger, what):
+        if self.ignored_by(s, entry, what):
+            return
         fmt = entry.subtitle_format()
         if not fmt:
             if entry.kind == 'maybe':
@@ -550,7 +569,7 @@ class TranslatorService(object):
             return
         found = [e for e in s.snapshot.values()
                  if e.root.kind == 'video' and e.name.lower().startswith(stem)
-                 and e.subtitle_format() in TRANSLATABLE]
+                 and not self.ignored_by(s, e, 'local') and e.subtitle_format() in TRANSLATABLE]
         if not found:
             return
         skip = self.cfg.skip_languages()
