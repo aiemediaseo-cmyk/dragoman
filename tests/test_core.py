@@ -220,9 +220,11 @@ class FakeClient(object):
         self.calls = calls if calls is not None else []
         self.last_usage = {'_secs': 0.1}
 
-    def generate_json(self, system, user, schema):
+    def generate_json(self, system, user, schema, **kw):
         payload = json.loads(user)
         self.calls.append((self.model, payload))
+        self.kw = kw
+        self.system = system
         if self.script:
             step = self.script.pop(0)
             if isinstance(step, Exception):
@@ -272,15 +274,16 @@ class TranslatorTests(unittest.TestCase):
         texts = ['line %d' % i for i in range(25)]
         tr, calls, _w = self.make([characters], cast=['Patrick Jane (Simon Baker)', 'Teresa Lisbon (Robin Tunney)'])
         found = tr.find_characters(texts)
-        self.assertEqual(found, ['Patrick Jane: male. consultant, works for Lisbon',
-                                 'Teresa Lisbon: female. his boss; called "Boss"', 'Bob: gender unknown'])
+        self.assertEqual([translator.character_line(c) for c in found],
+                         ['Patrick Jane: male. consultant, works for Lisbon',
+                          'Teresa Lisbon: female. his boss; called "Boss"', 'Bob: gender unknown'])
         first = calls[0][1]
         self.assertIn('line 0\nline 1', first['dialogue'])
         self.assertEqual(first['cast'][0], 'Patrick Jane (Simon Baker)')
         out, failed = tr.translate(texts)
         self.assertEqual(failed, 0)
         chunk1, chunk2, chunk3 = [c[1] for c in calls[1:]]
-        self.assertEqual(chunk1['characters'], found)
+        self.assertEqual(chunk1['characters'], [translator.character_line(c) for c in found])
         self.assertEqual(chunk1['context_after'], ['line %d' % i for i in range(10, 16)])
         self.assertEqual(chunk2['context_before'][-1], 'SL:line 9')
         self.assertNotIn('context_after', chunk3)
@@ -367,6 +370,354 @@ class TranslatorTests(unittest.TestCase):
     def test_prompt_mentions_target_rules(self):
         self.assertIn('Slovenian', translator.system_prompt('sl'))
         self.assertIn('Cyrillic', translator.system_prompt('sr-Cyrl'))
+
+
+class GenderFormTests(unittest.TestCase):
+    """On-device reading of I/you forms that show gender (0.5.0)."""
+
+    def forms(self, target, text):
+        from resources.lib.dragoman import gender
+        return [(p, g) for p, g, _w in gender.forms(target, text)]
+
+    def test_bcs(self):
+        M, F = 'male', 'female'
+        self.assertEqual(set(self.forms('bs', u'Bila sam umorna.')), {(1, F)})
+        self.assertEqual(self.forms('bs', u'Rekao sam ti da ne ideš.'), [(1, M)])
+        self.assertEqual(self.forms('bs', u'Jesi li ti bio tamo?'), [(2, M)])
+        self.assertEqual(self.forms('hr', u'Nisam bila sigurna.'), [(1, F)])
+        self.assertEqual(self.forms('sr', u'Osećam se kao da sam luda.'), [(1, F)])
+        self.assertEqual(self.forms('sr-Cyrl', u'Била сам тамо. Јеси ли ти био?'), [(1, F), (2, M)])
+        # not about the speaker
+        self.assertEqual(self.forms('bs', u'On je to sam rekao.'), [])        # sam = himself
+        self.assertEqual(self.forms('bs', u'Ja sam kao dijete.'), [])         # kao = like
+        self.assertEqual(self.forms('bs', u'Bio je umoran.'), [])             # he
+        self.assertEqual(self.forms('bs', u'Kupio sam si auto.'), [(1, M)])  # si = to myself
+        self.assertEqual(self.forms('bs', u'Izgubila sam posao.'), [(1, F)])  # posao = job
+
+    def test_other_slavic(self):
+        M, F = 'male', 'female'
+        self.assertEqual(set(self.forms('sl', u'Bil sem utrujen.')), {(1, M)})
+        self.assertEqual(self.forms('sl', u'Sem si kupila avto.'), [(1, F)])
+        self.assertEqual(set(self.forms('cs', u'Byla jsem unavená.')), {(1, F)})
+        self.assertEqual(self.forms('cs', u'Jsem rád, že jsi přišel.'), [(1, M), (2, M)])
+        self.assertEqual(self.forms('sk', u'Bola som tam.'), [(1, F)])
+        self.assertEqual(self.forms('pl', u'Byłam zmęczona.'), [(1, F)])
+        self.assertEqual(self.forms('pl', u'Siedziałem pod stołem.'), [(1, M)])
+        self.assertEqual(self.forms('pl', u'Czy byłaś tam?'), [(2, F)])
+        self.assertEqual(self.forms('pl', u'Wysyłam list.'), [])
+        self.assertEqual(self.forms('ru', u'Я не знал.'), [(1, M)])
+        self.assertEqual(self.forms('ru', u'Ты готова?'), [(2, F)])
+        self.assertEqual(self.forms('uk', u'Я був там.'), [(1, M)])
+        self.assertEqual(self.forms('uk', u'Я знов тут.'), [])
+
+    def test_romance(self):
+        M, F = 'male', 'female'
+        self.assertEqual(self.forms('es', u'Estoy cansada.'), [(1, F)])
+        self.assertEqual(self.forms('es', u'Estoy trabajando.'), [])
+        self.assertEqual(self.forms('pt-BR', u'Obrigado!'), [(1, M)])
+        self.assertEqual(self.forms('pt', u'Estou perto.'), [])
+        self.assertEqual(self.forms('it', u'Sono stata qui.'), [(1, F)])
+        self.assertEqual(self.forms('it', u'Ci sono molti.'), [])
+        self.assertEqual(self.forms('fr', u'Je ne suis pas sûre.'), [(1, F)])
+        self.assertEqual(self.forms('fr', u"J'étais fatigué."), [(1, M)])
+        self.assertEqual(self.forms('fr', u'Tu es prêt ?'), [(2, M)])
+        self.assertEqual(self.forms('fr', u'Je suis le chemin.'), [])
+        self.assertEqual(self.forms('de', u'Ich bin müde.'), [])   # no check for German
+
+    def test_no_false_alarms(self):
+        """Sentences the review found misread (0.5.0)."""
+        corpus = [('bs', u'Ja sam budala.'), ('bs', u'Ti si budala.'), ('bs', u'Ja sam Nikola.'),
+                  ('bs', u'Ja sam dio tima.'), ('bs', u'Ti si sam kriv.'), ('hr', u'Kupila si je auto.'),
+                  ('sl', u'Kdo te je pripeljal sem?'), ('sl', u'Zapomnila si je.'), ('sl', u'Oddahnil si je.'),
+                  ('sl', u'Jaz sem Rachel.'), ('sl', u'Sem Isabel.'), ('sk', u'Ona si to zaslúžila.'),
+                  ('sk', u'Myslel si, že to vieš.'), ('sk', u'Sadla si.'), ('it', u'Sono alla stazione.'),
+                  ('it', u'Sono della polizia.'), ('it', u'Sono Luca.'), ('it', u'Sono Andrea.'),
+                  ('es', u'Estás bajo arresto.'), ('es', u'Estoy contigo.'), ('pt', u'Estou dentro.'),
+                  ('es', u'La casa está encantada.'), ('pt', u'Ele foi obrigado a sair.'),
+                  ('ru', u'Я генерал.'), ('ru', u'Ты ангел.'), ('uk', u'Ти любов.'), ('ru', u'Я Петров.'),
+                  ('pl', u'Został generałem.'), ('pl', u'Nie zdołam.'), ('pl', u'Odwołam to.'),
+                  # second review
+                  ('es', u'¿Dónde estás ahora?'), ('pt', u'Onde estás agora?'), ('it', u'Dove sei ora?'),
+                  ('es', u'Estoy mucho mejor.'), ('it', u'Sei un genio!'), ('it', u'Sono un medico.'),
+                  ('fr', u'Tu es un bébé.'), ('bs', u'Bez posla sam već godinu dana.'), ('sl', u'Si kul?'),
+                  ('sl', u'Sem cool.')]
+        for target, text in corpus:
+            self.assertEqual(self.forms(target, text), [], (target, text))
+        # and still read where they should be
+        self.assertEqual(self.forms('bs', u'- Da.\nBila sam tamo.'), [(1, 'female')])
+        self.assertEqual(self.forms('sk', u'Ty si bol tam?'), [(2, 'male')])
+        self.assertEqual(self.forms('pt', u'Muito obrigada!'), [(1, 'female')])
+        self.assertEqual(self.forms('sl', u'Ali si bil tam?'), [(2, 'male')])
+        self.assertEqual(self.forms('hr', u'Znam da si bio sam.'), [(2, 'male')])     # sam = alone
+        self.assertEqual(self.forms('sl', u'Zapomnila si bom, kaj si rekel.'), [(2, 'male')])
+        self.assertEqual(self.forms('sr-Cyrl', u'Видео сам Данила јуче.'), [(1, 'male')])
+        self.assertEqual(self.forms('it', u'Sono appena arrivata.'), [(1, 'female')])
+        self.assertEqual(self.forms('es', u'Estoy un poco cansada.'), [(1, 'female')])
+        for target, text in (('hr', u'\u2013 Bila sam tamo.'), ('es', u'\u2014\u00bfEst\u00e1s loca?'),
+                             ('pl', u'\u2013 Jestem gotowa.'), ('ru', u'\u2013 \u042f \u0433\u043e\u0442\u043e\u0432\u0430.'),
+                             ('bs', u'BILA SAM TAMO.')):
+            self.assertEqual([g for _p, g in self.forms(target, text)][:1], ['female'], (target, text))
+        from resources.lib.dragoman import gender
+        self.assertEqual(gender.persons_in(u"I'm tired, you know."), {1, 2})
+        self.assertEqual(gender.persons_in(u'Where is it?'), set())
+        self.assertEqual(gender.persons_in(u'Give me that.'), {1})
+
+    def test_check_per_dash_line(self):
+        from resources.lib.dragoman import gender
+        text = u'- Bila sam tamo.\n- Bio sam i ja.'
+        self.assertEqual(gender.check('bs', text, [('female', 'male'), ('male', 'female')]), [])
+        self.assertEqual(gender.check('bs', u'- Bila sam tamo.\n- Bila sam i ja.',
+                                      [('female', 'male'), ('male', 'female')]),
+                         [(1, 'male', 'female', 'bila')])
+        self.assertEqual(gender.check('bs', u'Jesi li bila umorna?', [('male', 'male')]),
+                         [(2, 'male', 'female', 'bila')])
+        # unknown gender or a group: nothing to compare with
+        self.assertEqual(gender.check('bs', u'Bila sam tamo.', [(None, None)]), [])
+        self.assertEqual(gender.check('bs', u'Jesi li bila?', [('male', 'group')]), [])
+        # dash lines that do not match the voices are not checked
+        self.assertEqual(gender.check('bs', u'Bila sam tamo.', [('male', None), ('female', None)]), [])
+
+    def test_resolve_names(self):
+        from resources.lib.dragoman import gender
+        chars = [{'name': 'Teresa Lisbon', 'gender': 'female', 'aliases': ['Boss']},
+                 {'name': 'Patrick Jane', 'gender': 'male', 'aliases': []},
+                 {'name': 'Grace Van Pelt', 'gender': 'female', 'aliases': []}]
+        self.assertEqual(gender.resolve('Lisbon', chars), ('Teresa Lisbon', 'female'))
+        self.assertEqual(gender.resolve('Boss', chars), ('Teresa Lisbon', 'female'))
+        self.assertEqual(gender.resolve('Mr. Jane', chars), ('Patrick Jane', 'male'))
+        self.assertEqual(gender.resolve('waitress (f)', chars), ('waitress', 'female'))
+        self.assertEqual(gender.resolve('Mrs. Smith', chars), ('Mrs. Smith', 'female'))
+        self.assertEqual(gender.resolve('?', chars), (None, None))
+        self.assertEqual(gender.resolve('everyone', chars), ('several people', 'group'))
+        self.assertEqual(gender.resolve('Cho', chars), ('Cho', None))
+        self.assertEqual(gender.resolve('Lisbon and Jane', chars), ('several people', 'group'))
+        self.assertEqual(gender.resolve('woman', chars), ('woman', 'female'))
+        self.assertEqual(gender.resolve('Mrs. Jane', chars), ('Mrs. Jane', 'female'))
+        self.assertEqual(gender.describe('Lisbon', chars), 'Teresa Lisbon (female)')
+        self.assertIsNone(gender.describe('?', chars))
+
+
+class SpeakerPassTests(unittest.TestCase):
+    """0.5.0: who says each cue and to whom, before translating; then the on-device check."""
+
+    def make(self, script, target='bs', chunk=10, **kw):
+        calls = []
+        clients = []
+
+        def factory(model):
+            c = FakeClient(model, script, calls)
+            clients.append(c)
+            return c
+        now = [1000.0]
+
+        def wait(seconds):
+            now[0] += seconds
+            return False
+        kw.setdefault('source', 'en')
+        tr = translator.Translator(factory, ['m1', 'm2'], target, title='Film', chunk_size=chunk, rpm=600,
+                                   wait=wait, clock=lambda: now[0], speakers=True, **kw)
+        tr.characters = translator.coerce_characters([
+            {'name': 'Teresa Lisbon', 'gender': 'female', 'aliases': ['Boss']},
+            {'name': 'Patrick Jane', 'gender': 'male'}])
+        return tr, calls, clients
+
+    @staticmethod
+    def voices(answer_for):
+        return lambda p: json.dumps({'cues': [dict(id=c['id'], **answer_for(c)) for c in p['cues']]})
+
+    def test_tags_reach_the_translation_request(self):
+        speakers = self.voices(lambda c: {'speaker': 'Lisbon', 'to': 'Jane'})
+        texts = ['line %d' % i for i in range(5)] + ['- Me?\n- You.']
+        dash = lambda p: json.dumps({'cues': [{'id': c['id'], 'speaker': 'Lisbon | Jane' if c['id'] == 6 else 'Boss',  # noqa: E731
+                                               'to': 'Jane | Lisbon' if c['id'] == 6 else 'Jane'} for c in p['cues']]})
+        tr, calls, clients = self.make([dash])
+        out, failed = tr.translate(texts)
+        self.assertEqual(failed, 0)
+        self.assertEqual(len(calls), 2)                       # 1 speaker block + 1 chunk
+        speaker_req, chunk = calls[0][1], calls[1][1]
+        self.assertIn('Teresa Lisbon: female (also "Boss")', speaker_req['characters'][0])
+        self.assertEqual(chunk['cues'][0]['by'], 'Teresa Lisbon (female)')
+        self.assertEqual(chunk['cues'][0]['to'], 'Patrick Jane (male)')
+        self.assertEqual(chunk['cues'][5]['by'], '1) Teresa Lisbon (female) 2) Patrick Jane (male)')
+        self.assertIn('"by"', clients[0].system)               # the tagged prompt
+        self.assertEqual(tr.voices[5], [['Lisbon', 'Jane'], ['Jane', 'Lisbon']])
+        self.assertEqual(speakers({'cues': [{'id': 1}]}), '{"cues": [{"id": 1, "speaker": "Lisbon", "to": "Jane"}]}')
+
+    def test_speaker_requests_ask_for_more_thinking_and_run_per_block(self):
+        texts = ['line %d' % i for i in range(translator.SPEAKER_BLOCK + 20)]
+        script = [self.voices(lambda c: {'speaker': 'Jane', 'to': 'Lisbon'})]
+        tr, calls, clients = self.make(script, chunk=100)
+        seen = []
+        orig = FakeClient.generate_json
+
+        def spy(this, system, user, schema, **kw):
+            seen.append((schema is translator.SPEAKER_SCHEMA, kw.get('thinking')))
+            return orig(this, system, user, schema, **kw)
+        FakeClient.generate_json = spy
+        try:
+            out, failed = tr.translate(texts)
+        finally:
+            FakeClient.generate_json = orig
+        self.assertEqual(failed, 0)
+        kinds = [k for k, _t in seen]
+        # speaker block 1, three chunks, speaker block 2 (only when chunk 4 needs it), chunk 4
+        self.assertEqual(kinds, [True, False, False, False, True, False])
+        self.assertEqual(seen[0][1], translator.SPEAKER_THINKING)
+        self.assertEqual(sorted(tr.speaker_blocks), [0, translator.SPEAKER_BLOCK])
+        self.assertEqual(tr.speaker_requests, 2)
+
+    def test_speaker_pass_problems_never_stop_the_translation(self):
+        texts = ['line %d' % i for i in range(5)]
+        tr, calls, clients = self.make([GeminiError('blocked', 'finishReason PROHIBITED_CONTENT')])
+        out, failed = tr.translate(texts)
+        self.assertEqual((out[0], failed), ('SL:line 0', 0))
+        self.assertNotIn('by', calls[-1][1]['cues'][0])
+        self.assertEqual((tr.speaker_blocks, tr._speaker_failed), (set(), {0}))  # not asked again now
+        self.assertEqual(tr.state()['speaker_blocks'], [])    # ... but a resumed job tries again
+        # an answer cut off for length: the block is split
+        texts = ['line %d' % i for i in range(100)]
+        tr, calls, clients = self.make([GeminiError('too_long', 'MAX_TOKENS')], chunk=100)
+        tr.translate(texts)
+        self.assertEqual([len(c[1]['cues']) for c in calls], [100, 50, 50, 100])
+        # split once only: halves that fail too are given up (no cascade of requests)
+        tr, calls, clients = self.make([GeminiError('timeout', 't')] * 3, chunk=100)
+        out, failed = tr.translate(texts)
+        self.assertEqual(([len(c[1]['cues']) for c in calls], failed), ([100, 50, 50, 100], 0))
+        self.assertNotIn('by', calls[-1][1]['cues'][0])
+        # an answer that covers too few lines is not used
+        half = lambda p: json.dumps({'cues': [{'id': 1, 'speaker': 'Jane', 'to': 'Lisbon'}]})  # noqa: E731
+        tr, calls, clients = self.make([half])
+        tr.translate(['a', 'b', 'c'])
+        self.assertEqual(tr.voices, {})
+        # garbage answer: no tags, translation goes on
+        self.assertEqual(translator.parse_voices('nope', [0, 1]), {})
+
+    def test_wrong_gender_is_sent_back_and_fixed(self):
+        speakers = self.voices(lambda c: {'speaker': 'Lisbon', 'to': 'Jane'})
+        wrong = lambda p: json.dumps({'cues': [  # noqa: E731
+            {'id': 1, 'text': u'Bio sam tamo.'}, {'id': 2, 'text': u'Jesi li bila umorna?'},
+            {'id': 3, 'text': u'Bila sam tamo.'}]})
+        fixed = lambda p: json.dumps({'cues': [  # noqa: E731
+            {'id': 1, 'text': u'Bila sam tamo.'}, {'id': 2, 'text': u'Jesi li bio umoran?'}]})
+        tr, calls, clients = self.make([speakers, wrong, fixed])
+        out, failed = tr.translate(['I was there.', 'Are you tired?', 'I was there.'])
+        self.assertEqual(out, [u'Bila sam tamo.', u'Jesi li bio umoran?', u'Bila sam tamo.'])
+        repair = calls[2][1]['cues']
+        self.assertEqual([c['translation'] for c in repair], [u'Bio sam tamo.', u'Jesi li bila umorna?'])
+        self.assertIn('the speaker is female', repair[0]['problem'])
+        self.assertIn('the person spoken to is male', repair[1]['problem'])
+        self.assertEqual((tr.gender_flagged, tr.gender_fixed), (2, 2))
+
+    def test_fix_that_makes_nothing_better_is_ignored(self):
+        speakers = self.voices(lambda c: {'speaker': 'Lisbon', 'to': 'Jane'})
+        wrong = lambda p: json.dumps({'cues': [{'id': 1, 'text': u'Bio sam tamo.'}]})  # noqa: E731
+        worse = lambda p: json.dumps({'cues': [{'id': 1, 'text': u'- Bio sam\n- tamo.'}]})  # noqa: E731
+        tr, calls, clients = self.make([speakers, wrong, worse])
+        out, failed = tr.translate(['I was there.'])
+        self.assertEqual(out, [u'Bio sam tamo.'])
+        # the fix request failing is not fatal either
+        tr, calls, clients = self.make([speakers, wrong, GeminiError('server', 'boom', 503)])
+        out, failed = tr.translate(['I was there.'])
+        self.assertEqual((out, failed), ([u'Bio sam tamo.'], 0))
+
+    def test_only_persons_the_english_line_speaks_of_are_checked(self):
+        speakers = self.voices(lambda c: {'speaker': 'Lisbon', 'to': 'Jane'})
+        # "si" in this line is not "you" in the source: no flag, no fix request
+        answer = lambda p: json.dumps({'cues': [{'id': 1, 'text': u'Bio je tamo.'},  # noqa: E731
+                                                {'id': 2, 'text': u'Kupila si je auto.'}]})
+        tr, calls, clients = self.make([speakers, answer])
+        tr.translate(['He was there.', 'She bought herself a car.'])
+        self.assertEqual((len(calls), tr.gender_flagged), (2, 0))
+        # not checked at all for a source that is not English
+        wrong = lambda p: json.dumps({'cues': [{'id': 1, 'text': u'Bio sam tamo.'}]})  # noqa: E731
+        tr, calls, clients = self.make([speakers, wrong], source='de')
+        tr.translate(['Ich war da.'])
+        self.assertEqual((len(calls), tr.gender_flagged), (2, 0))
+
+    def test_one_speaker_for_two_dash_lines_is_not_used(self):
+        speakers = self.voices(lambda c: {'speaker': 'Lisbon', 'to': 'Jane'})
+        answer = lambda p: json.dumps({'cues': [{'id': 1, 'text': u'- Gdje si bio?\n- Bila sam kod kuće.'}]})  # noqa: E731
+        tr, calls, clients = self.make([speakers, answer])
+        tr.translate(['- Where were you?\n- I was at home.'])
+        self.assertNotIn('by', calls[1][1]['cues'][0])
+        self.assertEqual((len(calls), tr.gender_flagged), (2, 0))
+
+    def test_fixes_that_rewrite_are_refused(self):
+        speakers = self.voices(lambda c: {'speaker': 'Lisbon', 'to': 'Jane'})
+        wrong = lambda p: json.dumps({'cues': [{'id': 1, 'text': u'Bio sam umoran cijeli dan.'}]})  # noqa: E731
+        for bad in (u"I was tired all day.", u'Cijeli dan sam se osjećala kao da me pregazio kamion.'):
+            fix = lambda p, bad=bad: json.dumps({'cues': [{'id': 1, 'text': bad}]})  # noqa: E731
+            tr, calls, clients = self.make([speakers, wrong, fix])
+            out, failed = tr.translate(['I was tired all day.'])
+            self.assertEqual(out, [u'Bio sam umoran cijeli dan.'])
+            self.assertEqual(tr.gender_fixed, 0)
+
+    def test_fix_requests_have_a_budget(self):
+        speakers = self.voices(lambda c: {'speaker': 'Lisbon', 'to': 'Jane'})
+        wrong = lambda p: json.dumps({'cues': [{'id': c['id'], 'text': u'Bio sam tamo.'} for c in p['cues']]})  # noqa: E731
+        script = [speakers] + [wrong] * 30
+        tr, calls, clients = self.make(script, chunk=5)
+        out, failed = tr.translate(['I was there.'] * 30)    # 6 chunks: budget 2 fix requests
+        repairs = [c for c in calls if 'translation' in c[1]['cues'][0]]
+        self.assertEqual(len(repairs), 2)
+        self.assertEqual(tr.gender_flagged, 30)
+        # a rate limit on a fix request stops further fix requests
+        tr, calls, clients = self.make([speakers, wrong, GeminiError('rate', 'slow', retry_after=5)] + [wrong] * 5,
+                                       chunk=5)
+        tr.translate(['I was there.'] * 30)
+        repairs = [c for c in calls if 'translation' in c[1]['cues'][0]]
+        self.assertEqual(len(repairs), 1)
+
+    def test_cancel_during_speaker_or_fix_request(self):
+        tr, calls, clients = self.make([GeminiError('cancelled', 'aborted')])
+        with self.assertRaises(translator.Cancelled):
+            tr.translate(['I was there.'])
+        self.assertEqual(tr.speaker_blocks, set())
+        speakers = self.voices(lambda c: {'speaker': 'Lisbon', 'to': 'Jane'})
+        wrong = lambda p: json.dumps({'cues': [{'id': 1, 'text': u'Bio sam tamo.'}]})  # noqa: E731
+        tr, calls, clients = self.make([speakers, wrong, GeminiError('cancelled', 'aborted')])
+        with self.assertRaises(translator.Cancelled):
+            tr.translate(['I was there.'])
+
+    def test_speaker_pass_only_where_gender_shows(self):
+        tr, calls, clients = self.make([], target='de')
+        self.assertFalse(tr.speakers)
+        tr.translate(['I was there.'])
+        self.assertEqual(len(calls), 1)
+        self.assertNotIn('by', calls[0][1]['cues'][0])
+        tr, calls, clients = self.make([], target='he')     # no check, but the tags help
+        self.assertTrue(tr.speakers)
+        self.assertFalse(tr.check_forms)
+
+    def test_unchanged_answer_is_checked_too(self):
+        speakers = self.voices(lambda c: {'speaker': 'Lisbon', 'to': 'Jane'})
+        same = lambda p: json.dumps({'cues': [{'id': c['id'], 'text': u'Bio sam tamo.'} for c in p['cues']]})  # noqa: E731
+        texts = [u'Bio sam tamo.'] * 8
+        tr, calls, clients = self.make([speakers, same, same, lambda p: json.dumps({'cues': []})])
+        tr.translate(texts)
+        self.assertEqual(tr.gender_flagged, 0)   # the source is not English: nothing to compare
+
+
+    def test_no_check_without_rules_for_the_language(self):
+        speakers = self.voices(lambda c: {'speaker': 'Lisbon', 'to': 'Jane'})
+        tr, calls, clients = self.make([speakers], target='he')
+        tr.translate(['I was there.'])
+        self.assertEqual(len(calls), 2)
+
+    def test_state_round_trip(self):
+        speakers = self.voices(lambda c: {'speaker': 'Lisbon', 'to': '?'})
+        tr, calls, clients = self.make([speakers])
+        tr.translate(['a', 'b'])
+        state = json.loads(json.dumps(tr.state()))
+        tr2, calls2, _c = self.make([], voices=state['voices'], speaker_blocks=state['speaker_blocks'],
+                                    characters=state['characters'])
+        tr2.translate(['a', 'b'])
+        self.assertEqual(len(calls2), 1)                       # no second speaker request
+        self.assertEqual(calls2[0][1]['cues'][0]['by'], 'Teresa Lisbon (female)')
+        self.assertNotIn('to', calls2[0][1]['cues'][0])
+        # characters saved by 0.4.x (lines) still load
+        old = translator.coerce_characters(['Patrick Jane: male. consultant'])
+        self.assertEqual((old[0]['name'], old[0]['gender'], old[0]['note']), ('Patrick Jane', 'male', 'consultant'))
 
 
 class GeminiTests(unittest.TestCase):
@@ -535,6 +886,49 @@ class ReviewFixTests(unittest.TestCase):
         self.assertTrue(langdetect.same_group('pt-BR', 'pt'))
         self.assertFalse(langdetect.same_group('sl', 'hr'))
         self.assertFalse(langdetect.same_group('', 'hr'))
+
+
+class ThinkingRequestTests(unittest.TestCase):
+    """generate_json(thinking=, timeout=) for the speaker pass (0.5.0)."""
+
+    def test_thinking_first_then_the_usual_ladder_and_timeout_restored(self):
+        from resources.lib.dragoman import gemini
+        gemini.reset_session_cache()
+        sent = []
+
+        def transport(client, method, url, body, headers):
+            config = json.loads(body.decode('utf-8'))['generationConfig']
+            sent.append(((config.get('thinkingConfig') or {}).get('thinkingLevel'), client.timeout))
+            if len(sent) == 1:
+                return 400, json.dumps({'error': {'code': 400, 'message': 'thinking level not supported'}}).encode()
+            data = {'candidates': [{'content': {'parts': [{'text': '{"cues": []}'}]}, 'finishReason': 'STOP'}]}
+            return 200, json.dumps(data).encode()
+        client = gemini.GeminiClient('k', 'gemini-3.5-flash-lite', transport=transport)
+        client.generate_json('s', '{}', {}, thinking='medium', timeout=150)
+        self.assertEqual(sent, [('medium', 150), ('minimal', 150)])
+        self.assertEqual(client.timeout, gemini.TIMEOUT)
+        # remembered per (model, thinking): the next "medium" call starts at the variant that worked
+        client.generate_json('s', '{}', {}, thinking='medium')
+        self.assertEqual(sent[-1][0], 'minimal')
+        # an ordinary call is not affected
+        client.generate_json('s', '{}', {})
+        self.assertEqual(sent[-1][0], 'minimal')
+        self.assertEqual([t for t, _s in client._ladder('low')], ['low', 'minimal', None, None])
+
+    def test_timeout_restored_after_an_error(self):
+        from resources.lib.dragoman import gemini
+
+        def transport(client, method, url, body, headers):
+            raise OSError('down')
+        client = gemini.GeminiClient('k', 'gemini-3.5-flash-lite', transport=transport)
+        with self.assertRaises(gemini.GeminiError):
+            client.generate_json('s', '{}', {}, thinking='medium', timeout=150)
+        self.assertEqual(client.timeout, gemini.TIMEOUT)
+
+    def test_estimate_counts_slow_requests(self):
+        from resources.lib.dragoman import job
+        self.assertEqual(job.estimate_minutes(1800, 100, 8), 3)
+        self.assertEqual(job.estimate_minutes(1800, 100, 8, extra_requests=1, slow_requests=6), 6)
 
 
 class A4kNamingTests(unittest.TestCase):

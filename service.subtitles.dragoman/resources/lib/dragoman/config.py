@@ -66,6 +66,8 @@ class Config(object):
         else:
             primary = kodi.setting('custom_model', '').strip() or MODEL_CHOICES[0]
         c.fallback = kodi.setting_bool('fallback_models', True)
+        # who says each line and to whom, worked out before translating (male/female forms)
+        c.speakers = kodi.setting_bool('speaker_pass', True)
         c.models = [primary] + [m for m in MODEL_CHOICES if m != primary]
         c.chunk_size = kodi.setting_int('chunk_size', 100, 20, 200)
         c.rpm = kodi.setting_int('rpm', 8, 1, 30)
@@ -91,12 +93,12 @@ class Config(object):
 
     def summary(self):
         return ('target=%s (%s) leave_alone=%s ignore_addons=%s sources=%s mode=%s key: %s | models=%s fallback=%s '
-                'chunk=%d rpm=%d cache_days=%d progress=%s notify_skips=%s debug=%s charset=%s '
+                'speakers=%s chunk=%d rpm=%d cache_days=%d progress=%s notify_skips=%s debug=%s charset=%s '
                 'timing=%s reaction=%dms' % (
                     self.target, self.target_source, ','.join(self.leave_alone) or '-',
                     ','.join(self.ignore_addons) or '-',
                     ','.join(s for s in ('manual', 'auto', 'local') if self.source_enabled(s)) or '-',
                     ('auto', 'ask', 'off')[self.mode], self.key_hint(), self.models[0], self.fallback,
-                    self.chunk_size, self.rpm, self.cache_days, self.show_progress, self.notify_skips,
+                    self.speakers, self.chunk_size, self.rpm, self.cache_days, self.show_progress, self.notify_skips,
                     self.debug, self.kodi_charset or '?', ('auto', 'ask', 'off')[self.timing_check],
                     self.reaction_ms))

@@ -36,7 +36,7 @@ _CONFIG_ERROR_RE = re.compile(
     r'(?i)thinking|schema|response_?mime|generation_?config|unknown name|invalid json payload|'
     r'json mode|not supported|unsupported')
 
-_LADDER_CACHE = {}   # model -> index of the request variant that works
+_LADDER_CACHE = {}   # (model, thinking asked for) -> index of the request variant that works
 
 
 class GeminiError(Exception):
@@ -172,18 +172,23 @@ class GeminiClient(object):
                 result.append(model.get('name', '').replace('models/', ''))
         return result
 
-    def _ladder(self):
+    def _ladder(self, thinking=None):
         floor = THINKING_FLOOR.get(self.model, 'minimal')
-        steps = [(floor, True)]
-        if floor == 'minimal':
+        steps = [(thinking, True)] if thinking and thinking != floor else []
+        steps.append((floor, True))
+        if floor == 'minimal' and thinking != 'low':
             steps.append(('low', True))
         steps += [(None, True), (None, False)]
         return steps
 
-    def generate_json(self, system_text, user_text, schema, max_output_tokens=16384):
-        """Return the model's JSON text. Raises GeminiError."""
-        steps = self._ladder()
-        start = min(_LADDER_CACHE.get(self.model, 0), len(steps) - 1)
+    def generate_json(self, system_text, user_text, schema, max_output_tokens=16384, thinking=None,
+                      timeout=None):
+        """Return the model's JSON text. Raises GeminiError.
+        thinking: ask for this thinking level first (the model's lowest one otherwise);
+        timeout: seconds for this request instead of the client's default."""
+        steps = self._ladder(thinking)
+        cache_key = (self.model, thinking or '')
+        start = min(_LADDER_CACHE.get(cache_key, 0), len(steps) - 1)
         for index in range(start, len(steps)):
             thinking, use_schema = steps[index]
             config = {'responseMimeType': 'application/json', 'maxOutputTokens': max_output_tokens}
@@ -199,6 +204,9 @@ class GeminiClient(object):
                 'generationConfig': config,
             }
             started = time.time()
+            saved_timeout = self.timeout
+            if timeout:
+                self.timeout = timeout
             try:
                 data = self._request(API_BASE + 'models/%s:generateContent' % self.model, payload)
             except GeminiError as exc:
@@ -209,7 +217,9 @@ class GeminiClient(object):
                                   % (self.model, index, exc.message[:160]))
                     continue
                 raise
-            _LADDER_CACHE[self.model] = index
+            finally:
+                self.timeout = saved_timeout
+            _LADDER_CACHE[cache_key] = index
             self.last_usage = data.get('usageMetadata') or {}
             self.last_usage['_secs'] = round(time.time() - started, 1)
             return self._extract(data)

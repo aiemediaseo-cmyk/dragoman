@@ -12,6 +12,9 @@ ready. Playback never pauses.
   as Spanish), or in languages you choose to leave alone, are not translated.
 - Subtitles from add-ons that translate by themselves (Subterra, or any add-on you pick) are left alone.
 - Runs on any Kodi 19+ device: Android TV, phones, Windows, macOS, Linux, LibreELEC.
+- Male and female forms done properly in languages that need them (Bosnian, Croatian, Serbian, Slovenian,
+  Polish, Russian, French, Spanish...): Dragoman first works out who says each line and to whom, then checks
+  the translated "I"/"you" forms on your device and has the wrong ones fixed.
 - SRT and WebVTT subtitles. Finished translations are saved, so the same subtitle loads instantly next time.
 - Fixes subtitle timing too: a Sync assistant in Kodi's subtitle dialog (pick a line, press OK when you
   hear it) and a check for subtitles made for another frame rate. Fixes are remembered.

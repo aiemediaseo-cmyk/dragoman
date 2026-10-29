@@ -98,6 +98,10 @@ msgctxt "#32127"
 msgid "Use another free model when the daily quota runs out"
 msgstr ""
 
+msgctxt "#32129"
+msgid "Work out who speaks to whom first (better male/female forms, a little slower)"
+msgstr ""
+
 msgctxt "#32128"
 msgid "Subtitle text, titles, plots and cast names are sent to Google. On the free tier Google may use them to improve its products."
 msgstr ""

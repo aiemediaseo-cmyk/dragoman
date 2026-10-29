@@ -71,7 +71,12 @@ class FakeGemini(object):
             data = {'models': [{'name': 'models/gemini-3.5-flash-lite', 'supportedGenerationMethods': ['generateContent']}]}
         else:
             user = json.loads(body['contents'][0]['parts'][0]['text'])
-            if 'dialogue' in user:          # the "who are the characters" request
+            system = body['systemInstruction']['parts'][0]['text']
+            if 'who says each line' in system:     # the speaker pass
+                answer = {'cues': [{'id': c['id'], 'speaker': 'Lisbon', 'to': 'Jane'} for c in user['cues']]}
+            elif 'fix male/female grammar' in system:
+                answer = {'cues': [{'id': c['id'], 'text': c['translation']} for c in user['cues']]}
+            elif 'dialogue' in user:          # the "who are the characters" request
                 answer = {'characters': [{'name': 'Jane', 'gender': 'male', 'note': 'consultant'},
                                          {'name': 'Lisbon', 'gender': 'female', 'note': 'his boss'}]}
             else:
@@ -83,8 +88,20 @@ class FakeGemini(object):
         return 200, json.dumps(data).encode('utf-8')
 
     def generate_calls(self):
-        """Translation requests (the character request is listed by character_calls)."""
-        return [r for r in self.requests if r[0].endswith(':generateContent') and not self._is_characters(r)]
+        """Translation requests (the character and speaker requests are listed separately)."""
+        return [r for r in self.requests if r[0].endswith(':generateContent') and not self._is_characters(r)
+                and not self._is_speakers(r)]
+
+    def speaker_calls(self):
+        return [r for r in self.requests if r[0].endswith(':generateContent') and self._is_speakers(r)]
+
+    @staticmethod
+    def _is_speakers(request):
+        body = request[1] or {}
+        try:
+            return 'who says each line' in body['systemInstruction']['parts'][0]['text']
+        except (KeyError, IndexError, TypeError):
+            return False
 
     def character_calls(self):
         return [r for r in self.requests if r[0].endswith(':generateContent') and self._is_characters(r)]
@@ -107,7 +124,7 @@ class Base(unittest.TestCase):
         STATE.reset(self.base, ADDON)
         for sub in ('temp', 'profile/addon_data', 'home'):
             os.makedirs(os.path.join(self.base, sub))
-        STATE.settings = {'rpm': '30', 'chunk_size': '100'}
+        STATE.settings = {'rpm': '30', 'chunk_size': '100', 'speaker_pass': 'false'}
         STATE.settings.update(self.settings)
         self.save_state(api_key=KEY, leave_alone=['hr', 'sr', 'bs'])
         kodi_settings = {'locale.subtitlelanguage': 'Slovenian', 'locale.language': 'resource.language.en_gb',
@@ -308,7 +325,7 @@ class StreamTests(Base):
                           30: lambda: setattr(STATE, 'abort', True)})
         log = self.log()
         self.assertIn('cast 3', log)
-        self.assertIn('characters: Jane: male; Lisbon: female', log)
+        self.assertIn('characters: Jane (m); Lisbon (f)', log)
         first = json.loads(self.fake.character_calls()[0][1]['contents'][0]['parts'][0]['text'])
         self.assertEqual(first['cast'], ['Patrick Jane (Simon Baker)', 'Teresa Lisbon (Robin Tunney)',
                                          'Kimball Cho (Tim Kang)'])
@@ -318,6 +335,32 @@ class StreamTests(Base):
         self.assertEqual(len(self.fake.character_calls()), 1)
         self.assertEqual(len(self.fake.generate_calls()), 1)
         self.assertEqual(len(STATE.loaded_subs), 2)
+
+    def test_speaker_pass_tags_every_cue(self):
+        """0.5.0: who says each line and to whom is worked out first, then sent with each cue."""
+        STATE.settings['speaker_pass'] = 'true'
+
+        def play():
+            STATE.playing = True
+            STATE.file = STREAM
+            STATE.total = 6000.0
+            STATE.meta = {'title': 'Red Sky at Night', 'show': 'The Mentalist', 'season': 3, 'episode': 1}
+            self.player().onAVStarted()
+
+        self.run_service({2: play, 4: self.open_dialog,
+                          6: lambda: self.pick('TempSubtitle.en.srt', EN), 7: self.join_job,
+                          20: lambda: setattr(STATE, 'abort', True)})
+        log = self.log()
+        self.assertIn('speaker pass on', log)
+        self.assertEqual(len(self.fake.speaker_calls()), 1)
+        self.assertEqual(len(self.fake.generate_calls()), 1)
+        speaker = self.fake.speaker_calls()[0][1]
+        self.assertEqual(speaker['generationConfig']['thinkingConfig']['thinkingLevel'], 'medium')
+        chunk = json.loads(self.fake.generate_calls()[0][1]['contents'][0]['parts'][0]['text'])
+        self.assertEqual(chunk['cues'][0]['by'], 'Lisbon (female)')
+        self.assertEqual(chunk['cues'][0]['to'], 'Jane (male)')
+        self.assertIn('1 for the speaker pass', log)
+        self.assertEqual(len(STATE.loaded_subs), 1)
 
     def test_kodi_19_cast_text(self):
         from resources.lib.dragoman.service import TranslatorService

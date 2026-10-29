@@ -46,6 +46,15 @@ under a minute for a film). Playback never pauses.
 - Subtitles made by add-ons that translate by themselves are left to them.
   Subterra is on that list from the start; change it under **Subtitles from
   other add-ons to ignore...**.
+- **Male and female forms:** English rarely shows who is male or female ("I was
+  tired"), Bosnian and many other languages must ("bio sam" / "bila sam"). Before
+  translating, Dragoman lists the characters (with the cast from Kodi) and works
+  out who says each line and to whom, a few hundred lines at a time. Each line
+  is then translated with that information, and Dragoman reads the result on
+  your device: an "I" or "you" form that contradicts it (Bosnian, Croatian,
+  Serbian, Slovenian, Czech, Slovak, Polish, Russian, Ukrainian, French,
+  Spanish, Portuguese, Italian) is sent back once to be fixed. It cannot be
+  perfect, since subtitles do not always say who is talking.
 - **Translate the current subtitle now** (in the menu) translates the last
   subtitle anyway, even if it is in a left-alone language.
 - Finished translations are saved, so picking the same subtitle again loads
@@ -88,7 +97,9 @@ goes on - are fixed during playback:
   it, remove it (the key is kept in the add-on's own `state.json`, so closing
   the settings dialog can never undo it), model (default
   gemini-3.5-flash-lite), switch to another free model when the daily quota
-  runs out.
+  runs out, and **Work out who speaks to whom first** (on by default; better
+  male/female forms for about one extra request per 300 lines - a film takes
+  a minute or two longer).
 - **Timing:** Sync assistant and Undo (during playback), the frame-rate check
   (fix automatically when sure / ask first / off), and the time taken off each
   press in the Sync assistant (your reaction plus the dialog closing; raise it

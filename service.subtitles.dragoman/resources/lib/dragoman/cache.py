@@ -23,9 +23,11 @@ class Cache(object):
                 pass
 
     @staticmethod
-    def key(texts, target, model, chunk_size):
+    def key(texts, target, model, chunk_size, speakers=False):
         digest = hashlib.sha1()
-        digest.update(('%s|%s|%s|%d|' % (PROMPT_VERSION, target, model, chunk_size)).encode('utf-8'))
+        # with the speaker pass on, a translation made without it is not reused (and back)
+        version = PROMPT_VERSION + ('s' if speakers else '')
+        digest.update(('%s|%s|%s|%d|' % (version, target, model, chunk_size)).encode('utf-8'))
         for text in texts:
             digest.update(text.encode('utf-8'))
             digest.update(b'\x00')

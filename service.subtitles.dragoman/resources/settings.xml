@@ -21,6 +21,7 @@
         <setting id="model" type="enum" label="32125" lvalues="32140|32141|32142|32143|32144|32145|32146" default="0"/>
         <setting id="custom_model" type="text" label="32126" default="" enable="eq(-1,6)"/>
         <setting id="fallback_models" type="bool" label="32127" default="true"/>
+        <setting id="speaker_pass" type="bool" label="32129" default="true"/>
     </category>
     <category label="32420">
         <setting type="lsep" label="32426"/>
